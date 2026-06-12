@@ -216,7 +216,11 @@ export function Dashboard() {
 
       setLeadProgress(rowIndex, "Completed", "completed", "completed");
       clearLeadProgress(rowIndex, 4000);
-      return { ok: true as const, rowIndex };
+      return {
+        ok: true as const,
+        rowIndex,
+        sentUrl: data.sentUrl as string | undefined,
+      };
     } catch (e) {
       const message = e instanceof Error ? e.message : "Send failed";
       setRowProgress((prev) => ({
@@ -235,7 +239,10 @@ export function Dashboard() {
   };
 
   const sendLead = async (rowIndex: number) => {
-    await executeSend(rowIndex);
+    const result = await executeSend(rowIndex);
+    if (result.ok && result.sentUrl) {
+      showActionMessage(`Sent — check your Gmail Sent folder`);
+    }
     await fetchLeads(true);
   };
 
@@ -257,13 +264,22 @@ export function Dashboard() {
       setBulkProgress(`${done} / ${unique.length} done`);
     };
 
-    await Promise.allSettled(
+    const results = await Promise.allSettled(
       unique.map(async (rowIndex) => {
         const result = await executeSend(rowIndex);
         bumpDone();
         return result;
       })
     );
+
+    const sentCount = results.filter(
+      (r) => r.status === "fulfilled" && r.value.ok
+    ).length;
+    if (sentCount > 0) {
+      showActionMessage(
+        `Bulk send finished — ${sentCount} sent. Check Gmail Sent folder.`
+      );
+    }
 
     await fetchLeads(true);
     setBulkProgress(null);
