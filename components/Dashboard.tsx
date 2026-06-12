@@ -30,6 +30,9 @@ export function Dashboard() {
   const [previewEmail, setPreviewEmail] = useState<EmailContent | null>(null);
   const [previewCompany, setPreviewCompany] = useState("");
   const [previewProgress, setPreviewProgress] = useState<string | null>(null);
+  const [previewRowIndex, setPreviewRowIndex] = useState<number | null>(null);
+  const [previewingRows, setPreviewingRows] = useState<Set<number>>(new Set());
+  const previewCancelledRef = useRef(false);
 
   const showActionMessage = (msg: string) => {
     setActionMessage(msg);
@@ -109,7 +112,9 @@ export function Dashboard() {
   };
 
   const toggleSelectAll = () => {
-    const selectable = stageLeads.filter((l) => l.status !== "generating" && l.status !== "sending");
+    const selectable = stageLeads.filter(
+      (l) => !previewingRows.has(l.rowIndex) && !sendingRows.has(l.rowIndex)
+    );
     if (selected.size === selectable.length) {
       setSelected(new Set());
     } else {
@@ -139,7 +144,28 @@ export function Dashboard() {
     fetchLeads();
   };
 
+  const closePreview = () => {
+    previewCancelledRef.current = true;
+    if (previewRowIndex !== null) {
+      setPreviewingRows((prev) => {
+        const next = new Set(prev);
+        next.delete(previewRowIndex);
+        return next;
+      });
+      fetch(`/api/leads/${previewRowIndex}/unlock`, { method: "POST" }).then(() => fetchLeads());
+    }
+    setPreviewOpen(false);
+    setPreviewLoading(false);
+    setPreviewProgress(null);
+    setPreviewRowIndex(null);
+  };
+
   const previewLead = async (lead: Lead) => {
+    if (previewingRows.has(lead.rowIndex) || sendingRows.has(lead.rowIndex)) return;
+
+    previewCancelledRef.current = false;
+    setPreviewRowIndex(lead.rowIndex);
+    setPreviewingRows((prev) => new Set(prev).add(lead.rowIndex));
     setPreviewOpen(true);
     setPreviewCompany(lead.companyName);
     setPreviewLoading(true);
@@ -149,14 +175,27 @@ export function Dashboard() {
 
     try {
       const email = await runLeadJobUntilReady(lead.rowIndex, (msg) => {
-        setPreviewProgress(msg);
+        if (!previewCancelledRef.current) setPreviewProgress(msg);
       });
-      setPreviewEmail(email);
+      if (!previewCancelledRef.current) {
+        setPreviewEmail(email);
+        fetchLeads();
+      }
     } catch (e) {
-      setPreviewError(e instanceof Error ? e.message : "Preview failed");
+      if (!previewCancelledRef.current) {
+        setPreviewError(e instanceof Error ? e.message : "Preview failed");
+      }
+      fetchLeads();
     } finally {
-      setPreviewLoading(false);
-      setPreviewProgress(null);
+      setPreviewingRows((prev) => {
+        const next = new Set(prev);
+        next.delete(lead.rowIndex);
+        return next;
+      });
+      if (!previewCancelledRef.current) {
+        setPreviewLoading(false);
+        setPreviewProgress(null);
+      }
     }
   };
 
@@ -213,7 +252,12 @@ export function Dashboard() {
   const sendAll = () =>
     sendBulk(
       stageLeads
-        .filter((l) => l.status !== "generating" && l.status !== "sending" && l.status !== "error")
+        .filter(
+          (l) =>
+            !previewingRows.has(l.rowIndex) &&
+            !sendingRows.has(l.rowIndex) &&
+            l.status !== "error"
+        )
         .map((l) => l.rowIndex)
     );
 
@@ -380,8 +424,11 @@ export function Dashboard() {
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {stageLeads.map((lead) => {
             const isSending = sendingRows.has(lead.rowIndex);
-            const isBusy = lead.status === "generating" || lead.status === "sending" || isSending;
+            const isPreviewing = previewingRows.has(lead.rowIndex);
+            const isBusy = isSending || isPreviewing;
             const progress = rowProgress[lead.rowIndex];
+            const displayStatus =
+              isSending ? "sending" : isPreviewing ? "generating" : lead.status === "generating" ? "ready" : lead.status;
 
             return (
               <div
@@ -418,7 +465,7 @@ export function Dashboard() {
                   )}
                 </div>
 
-                <StatusBadge status={lead.status} />
+                <StatusBadge status={displayStatus} />
 
                 {lead.errorMessage && (
                   <span style={{ fontSize: 11, color: "#FCA5A5", maxWidth: 200 }}>{lead.errorMessage}</span>
@@ -437,7 +484,7 @@ export function Dashboard() {
                         Preview
                       </button>
                       <button onClick={() => sendLead(lead.rowIndex)} disabled={isBusy} style={btnPrimary}>
-                        {isBusy ? "…" : "Send"}
+                        {isSending ? "…" : "Send"}
                       </button>
                     </>
                   )}
@@ -468,7 +515,7 @@ export function Dashboard() {
 
       <PreviewModal
         open={previewOpen}
-        onClose={() => setPreviewOpen(false)}
+        onClose={closePreview}
         companyName={previewCompany}
         email={previewEmail}
         loading={previewLoading}

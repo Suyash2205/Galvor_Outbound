@@ -118,7 +118,6 @@ export async function startLeadJob(rowIndex: number): Promise<JobStatus> {
 
   const ref = await startApifyRun(lead.metaAdLibraryUrl);
   await updateLeadRow(rowIndex, {
-    status: "generating",
     notes: encodeApifyJob(ref),
     errorMessage: "",
   });
@@ -149,7 +148,6 @@ export async function pollLeadJob(rowIndex: number): Promise<JobStatus> {
 
   const pendingAds = decodeAds(lead.notes);
   if (pendingAds) {
-    await updateLeadRow(rowIndex, { status: "generating" });
     try {
       const analysis = await generateAnalysis(
         lead.companyName,
@@ -202,7 +200,6 @@ export async function pollLeadJob(rowIndex: number): Promise<JobStatus> {
   }
 
   try {
-    await updateLeadRow(rowIndex, { status: "generating" });
     const items = await fetchApifyDataset(datasetId || job.datasetId);
     const ads = processApifyItems(items);
     if (!ads.length) {
