@@ -13,7 +13,7 @@ import {
   buildEmail2Content,
   buildPlaceholderEmail,
 } from "./email/templates";
-import { fetchAllLeads, updateLeadRow } from "./sheets";
+import { fetchLeadByRow, updateLeadRow } from "./sheets";
 import {
   DEFAULT_CLOSING_COPY,
   type EmailContent,
@@ -44,9 +44,8 @@ function decodeAds(notes: string): ProcessedAd[] | null {
   }
 }
 
-async function getLeadByRow(rowIndex: number): Promise<Lead> {
-  const leads = await fetchAllLeads();
-  const lead = leads.find((l) => l.rowIndex === rowIndex);
+async function getLeadByRow(rowIndex: number, fresh = false): Promise<Lead> {
+  const lead = await fetchLeadByRow(rowIndex, fresh ? { fresh: true } : undefined);
   if (!lead) throw new Error(`Lead not found at row ${rowIndex}`);
   return lead;
 }
@@ -117,10 +116,11 @@ export async function startLeadJob(rowIndex: number): Promise<JobStatus> {
   }
 
   const ref = await startApifyRun(lead.metaAdLibraryUrl);
-  await updateLeadRow(rowIndex, {
-    notes: encodeApifyJob(ref),
-    errorMessage: "",
-  });
+  await updateLeadRow(
+    rowIndex,
+    { notes: encodeApifyJob(ref), errorMessage: "" },
+    lead
+  );
   return {
     phase: "scraping",
     message: "Started Apify scraper… (usually 1–3 min)",
@@ -155,18 +155,21 @@ export async function pollLeadJob(rowIndex: number): Promise<JobStatus> {
         lead.firstName,
         pendingAds
       );
-      await updateLeadRow(rowIndex, {
-        cachedAnalysis: analysis,
-        notes: "",
-        status: "ready",
-        errorMessage: "",
-      });
-      lead = await getLeadByRow(rowIndex);
+      await updateLeadRow(
+        rowIndex,
+        { cachedAnalysis: analysis, notes: "", status: "ready", errorMessage: "" },
+        lead
+      );
+      lead = { ...lead, cachedAnalysis: analysis, notes: "", status: "ready", errorMessage: "" };
       const email = emailFromLeadAndAnalysis(lead);
       return { phase: "ready", message: "Email generated.", email, lead };
     } catch (err) {
       const message = err instanceof Error ? err.message : "Claude analysis failed";
-      await updateLeadRow(rowIndex, { status: "error", errorMessage: message, notes: "" });
+      await updateLeadRow(
+        rowIndex,
+        { status: "error", errorMessage: message, notes: "" },
+        lead
+      );
       return { phase: "error", message, lead };
     }
   }
@@ -191,7 +194,11 @@ export async function pollLeadJob(rowIndex: number): Promise<JobStatus> {
 
   if (["FAILED", "ABORTED", "TIMED-OUT"].includes(status)) {
     const message = `Apify run ${status.toLowerCase()}. Check your Ad Library URL.`;
-    await updateLeadRow(rowIndex, { status: "error", notes: "", errorMessage: message });
+    await updateLeadRow(
+      rowIndex,
+      { status: "error", notes: "", errorMessage: message },
+      lead
+    );
     return { phase: "error", message, lead };
   }
 
@@ -205,15 +212,19 @@ export async function pollLeadJob(rowIndex: number): Promise<JobStatus> {
     if (!ads.length) {
       throw new Error("No ads with valid start dates found. Check the Ad Library URL.");
     }
-    await updateLeadRow(rowIndex, { notes: encodeAds(ads) });
+    await updateLeadRow(rowIndex, { notes: encodeAds(ads) }, lead);
     return {
       phase: "analyzing",
       message: "Ads fetched — generating email with Claude…",
-      lead,
+      lead: { ...lead, notes: encodeAds(ads) },
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to fetch ads";
-    await updateLeadRow(rowIndex, { status: "error", notes: "", errorMessage: message });
+    await updateLeadRow(
+      rowIndex,
+      { status: "error", notes: "", errorMessage: message },
+      lead
+    );
     return { phase: "error", message, lead };
   }
 }

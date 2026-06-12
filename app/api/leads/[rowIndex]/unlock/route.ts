@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
-import { fetchAllLeads, updateLeadRow } from "@/lib/sheets";
+import { fetchLeadByRow, updateLeadRow } from "@/lib/sheets";
 
 /** Reset a lead stuck in generating after a cancelled preview */
 export async function POST(
@@ -12,8 +12,7 @@ export async function POST(
     const { rowIndex } = await params;
     const idx = parseInt(rowIndex, 10);
 
-    const leads = await fetchAllLeads();
-    const lead = leads.find((l) => l.rowIndex === idx);
+    const lead = await fetchLeadByRow(idx, { fresh: true });
     if (!lead) {
       return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     }
@@ -23,7 +22,7 @@ export async function POST(
     }
 
     if (lead.status === "generating") {
-      await updateLeadRow(idx, { status: "ready", errorMessage: "" });
+      await updateLeadRow(idx, { status: "ready", errorMessage: "" }, lead);
     }
 
     return NextResponse.json({ ok: true });

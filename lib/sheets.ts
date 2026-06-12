@@ -8,6 +8,12 @@ import {
   type LeadStatus,
 } from "./types";
 
+const LEADS_CACHE_MS = 45_000;
+const ROW_CACHE_MS = 30_000;
+
+let leadsCache: { data: Lead[]; at: number } | null = null;
+const rowCache = new Map<number, { lead: Lead; at: number }>();
+
 function getAuth() {
   const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   const key = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY?.replace(/\\n/g, "\n");
@@ -29,6 +35,15 @@ function getSpreadsheetId() {
   return id;
 }
 
+export function invalidateLeadsCache() {
+  leadsCache = null;
+  rowCache.clear();
+}
+
+function patchRowCache(rowIndex: number, lead: Lead) {
+  rowCache.set(rowIndex, { lead, at: Date.now() });
+}
+
 function parseAnalysis(raw: string): ClaudeAnalysis | null {
   if (!raw?.trim()) return null;
   try {
@@ -38,7 +53,7 @@ function parseAnalysis(raw: string): ClaudeAnalysis | null {
   }
 }
 
-function rowToLead(row: string[], rowIndex: number): Lead | null {
+export function rowToLead(row: string[], rowIndex: number): Lead | null {
   if (!row[0]?.trim() && !row[1]?.trim() && !row[4]?.trim()) return null;
 
   const stage = (row[8]?.trim() || "1") as LeadStage;
@@ -101,6 +116,18 @@ function leadToRow(lead: Partial<Lead> & { rowIndex?: number }): string[] {
   ];
 }
 
+function patchLeadsCache(rowIndex: number, updates: Partial<Lead>) {
+  if (leadsCache) {
+    leadsCache.data = leadsCache.data.map((l) =>
+      l.rowIndex === rowIndex ? { ...l, ...updates } : l
+    );
+  }
+  const row = rowCache.get(rowIndex);
+  if (row) {
+    rowCache.set(rowIndex, { lead: { ...row.lead, ...updates }, at: Date.now() });
+  }
+}
+
 export async function ensureSheetTab(): Promise<void> {
   const auth = getAuth();
   const sheets = google.sheets({ version: "v4", auth });
@@ -140,8 +167,42 @@ export async function ensureSheetTab(): Promise<void> {
   }
 }
 
-export async function fetchAllLeads(): Promise<Lead[]> {
-  await ensureSheetTab();
+export async function fetchLeadByRow(
+  rowIndex: number,
+  options?: { fresh?: boolean }
+): Promise<Lead | null> {
+  if (!options?.fresh) {
+    const rowCached = rowCache.get(rowIndex);
+    if (rowCached && Date.now() - rowCached.at < ROW_CACHE_MS) {
+      return rowCached.lead;
+    }
+    if (leadsCache && Date.now() - leadsCache.at < LEADS_CACHE_MS) {
+      const cached = leadsCache.data.find((l) => l.rowIndex === rowIndex);
+      if (cached) return cached;
+    }
+  }
+
+  const auth = getAuth();
+  const sheets = google.sheets({ version: "v4", auth });
+  const spreadsheetId = getSpreadsheetId();
+
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `${SHEET_TAB_NAME}!A${rowIndex}:W${rowIndex}`,
+  });
+
+  const row = res.data.values?.[0] as string[] | undefined;
+  if (!row) return null;
+  const lead = rowToLead(row, rowIndex);
+  if (lead) patchRowCache(rowIndex, lead);
+  return lead;
+}
+
+export async function fetchAllLeads(options?: { fresh?: boolean }): Promise<Lead[]> {
+  if (!options?.fresh && leadsCache && Date.now() - leadsCache.at < LEADS_CACHE_MS) {
+    return leadsCache.data;
+  }
+
   const auth = getAuth();
   const sheets = google.sheets({ version: "v4", auth });
   const spreadsheetId = getSpreadsheetId();
@@ -152,32 +213,47 @@ export async function fetchAllLeads(): Promise<Lead[]> {
   });
 
   const rows = res.data.values || [];
-  return rows
+  const leads = rows
     .map((row, i) => rowToLead(row as string[], i + 2))
     .filter((l): l is Lead => l !== null);
+
+  leadsCache = { data: leads, at: Date.now() };
+  for (const lead of leads) {
+    patchRowCache(lead.rowIndex, lead);
+  }
+  return leads;
 }
 
-export async function updateLeadRow(rowIndex: number, updates: Partial<Lead>): Promise<void> {
+export async function updateLeadRow(
+  rowIndex: number,
+  updates: Partial<Lead>,
+  existing?: Lead
+): Promise<void> {
   const auth = getAuth();
   const sheets = google.sheets({ version: "v4", auth });
   const spreadsheetId = getSpreadsheetId();
 
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId,
-    range: `${SHEET_TAB_NAME}!A${rowIndex}:W${rowIndex}`,
-  });
+  let current = existing ?? null;
+  if (!current) {
+    const row = await fetchLeadByRow(rowIndex, { fresh: true });
+    current = row ?? ({} as Lead);
+  }
 
-  const existing = (res.data.values?.[0] as string[]) || [];
-  const current = rowToLead(existing, rowIndex) || ({} as Lead);
   const merged = { ...current, ...updates };
-  const row = leadToRow(merged);
+  const rowData = leadToRow(merged);
 
   await sheets.spreadsheets.values.update({
     spreadsheetId,
     range: `${SHEET_TAB_NAME}!A${rowIndex}:W${rowIndex}`,
     valueInputOption: "RAW",
-    requestBody: { values: [row] },
+    requestBody: { values: [rowData] },
   });
+
+  patchLeadsCache(rowIndex, updates);
+  if (leadsCache) {
+    leadsCache.at = Date.now();
+  }
+  patchRowCache(rowIndex, merged as Lead);
 }
 
 export function getSheetUrl(rowIndex?: number): string {

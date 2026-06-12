@@ -69,9 +69,10 @@ export function Dashboard() {
     }
   };
 
-  const fetchLeads = useCallback(async () => {
+  const fetchLeads = useCallback(async (fresh = false) => {
     try {
-      const res = await fetch("/api/leads");
+      const url = fresh ? "/api/leads?fresh=1" : "/api/leads";
+      const res = await fetch(url);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to load leads");
       setLeads(data.leads);
@@ -84,8 +85,8 @@ export function Dashboard() {
   }, []);
 
   useEffect(() => {
-    fetchLeads();
-    const interval = setInterval(fetchLeads, 60000);
+    fetchLeads(true);
+    const interval = setInterval(() => fetchLeads(false), 180_000);
     return () => clearInterval(interval);
   }, [fetchLeads]);
 
@@ -152,7 +153,7 @@ export function Dashboard() {
         next.delete(previewRowIndex);
         return next;
       });
-      fetch(`/api/leads/${previewRowIndex}/unlock`, { method: "POST" }).then(() => fetchLeads());
+      fetch(`/api/leads/${previewRowIndex}/unlock`, { method: "POST" });
     }
     setPreviewOpen(false);
     setPreviewLoading(false);
@@ -179,13 +180,11 @@ export function Dashboard() {
       });
       if (!previewCancelledRef.current) {
         setPreviewEmail(email);
-        fetchLeads();
       }
     } catch (e) {
       if (!previewCancelledRef.current) {
         setPreviewError(e instanceof Error ? e.message : "Preview failed");
       }
-      fetchLeads();
     } finally {
       setPreviewingRows((prev) => {
         const next = new Set(prev);
@@ -217,7 +216,7 @@ export function Dashboard() {
 
       setLeadProgress(rowIndex, "Completed", "completed", "completed");
       clearLeadProgress(rowIndex, 4000);
-      await fetchLeads();
+      await fetchLeads(true);
     } catch (e) {
       const message = e instanceof Error ? e.message : "Send failed";
       setRowProgress((prev) => ({
@@ -225,7 +224,7 @@ export function Dashboard() {
         [rowIndex]: { message, percent: 100, status: "error" },
       }));
       clearLeadProgress(rowIndex, 6000);
-      await fetchLeads();
+      await fetchLeads(true);
     } finally {
       setSendingRows((prev) => {
         const next = new Set(prev);
@@ -297,7 +296,7 @@ export function Dashboard() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <button
-            onClick={fetchLeads}
+            onClick={() => fetchLeads(true)}
             style={btnGhost}
           >
             Sync

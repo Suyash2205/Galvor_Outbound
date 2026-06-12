@@ -1,19 +1,12 @@
 import { ensureLeadReady } from "./lead-job";
 import { sendGmailMessage } from "./gmail";
 import {
-  fetchAllLeads,
+  fetchLeadByRow,
   nextStage,
   stageToSentField,
   updateLeadRow,
 } from "./sheets";
 import type { Lead } from "./types";
-
-async function getLeadByRow(rowIndex: number): Promise<Lead> {
-  const leads = await fetchAllLeads();
-  const lead = leads.find((l) => l.rowIndex === rowIndex);
-  if (!lead) throw new Error(`Lead not found at row ${rowIndex}`);
-  return lead;
-}
 
 export async function sendLeadEmail(params: {
   rowIndex: number;
@@ -21,7 +14,8 @@ export async function sendLeadEmail(params: {
   senderEmail: string;
 }): Promise<{ lead: Lead; messageId: string; threadId: string }> {
   const { rowIndex, accessToken, senderEmail } = params;
-  const lead = await getLeadByRow(rowIndex);
+  const lead = await fetchLeadByRow(rowIndex, { fresh: true });
+  if (!lead) throw new Error(`Lead not found at row ${rowIndex}`);
 
   if (lead.stage === "Response Received") {
     throw new Error("Lead has already responded.");
@@ -32,7 +26,7 @@ export async function sendLeadEmail(params: {
   }
 
   const currentStage = lead.stage;
-  await updateLeadRow(rowIndex, { status: "sending", errorMessage: "" });
+  await updateLeadRow(rowIndex, { status: "sending", errorMessage: "" }, lead);
 
   try {
     const { email } = await ensureLeadReady(rowIndex);
@@ -63,13 +57,14 @@ export async function sendLeadEmail(params: {
       (updates as Record<string, string>)[sentField] = now;
     }
 
-    await updateLeadRow(rowIndex, updates);
+    await updateLeadRow(rowIndex, updates, { ...lead, status: "sending" });
 
-    const updated = await getLeadByRow(rowIndex);
+    const updated = await fetchLeadByRow(rowIndex, { fresh: true });
+    if (!updated) throw new Error("Lead not found after send");
     return { lead: updated, messageId, threadId };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Send failed";
-    await updateLeadRow(rowIndex, { status: "error", errorMessage: message });
+    await updateLeadRow(rowIndex, { status: "error", errorMessage: message }, lead);
     throw err;
   }
 }

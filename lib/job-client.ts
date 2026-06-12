@@ -40,9 +40,9 @@ export async function runLeadJobUntilReady(
 
   onProgress?.(startData.message || "Working…", startData.phase);
 
-  const maxAttempts = 90; // ~6 min at 4s intervals
+  const maxAttempts = 50; // ~7 min at 8s intervals
   for (let i = 0; i < maxAttempts; i++) {
-    await sleep(4000);
+    await sleep(8000);
     const pollRes = await fetch(`/api/leads/${rowIndex}/job`);
     const pollData = await pollRes.json();
     if (!pollRes.ok) throw new Error(pollData.error || "Job poll failed");
