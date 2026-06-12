@@ -114,7 +114,7 @@ export function Dashboard() {
 
   const toggleSelectAll = () => {
     const selectable = stageLeads.filter(
-      (l) => !previewingRows.has(l.rowIndex) && !sendingRows.has(l.rowIndex)
+      (l) => !previewingRows.has(l.rowIndex) && !sendingRows.has(l.rowIndex) && !bulkProgress
     );
     if (selected.size === selectable.length) {
       setSelected(new Set());
@@ -198,7 +198,7 @@ export function Dashboard() {
     }
   };
 
-  const sendLead = async (rowIndex: number) => {
+  const executeSend = async (rowIndex: number) => {
     setSendingRows((prev) => new Set(prev).add(rowIndex));
     clearLeadProgress(rowIndex);
     setLeadProgress(rowIndex, "Starting…", "scraping");
@@ -216,7 +216,7 @@ export function Dashboard() {
 
       setLeadProgress(rowIndex, "Completed", "completed", "completed");
       clearLeadProgress(rowIndex, 4000);
-      await fetchLeads(true);
+      return { ok: true as const, rowIndex };
     } catch (e) {
       const message = e instanceof Error ? e.message : "Send failed";
       setRowProgress((prev) => ({
@@ -224,7 +224,7 @@ export function Dashboard() {
         [rowIndex]: { message, percent: 100, status: "error" },
       }));
       clearLeadProgress(rowIndex, 6000);
-      await fetchLeads(true);
+      return { ok: false as const, rowIndex, message };
     } finally {
       setSendingRows((prev) => {
         const next = new Set(prev);
@@ -234,15 +234,38 @@ export function Dashboard() {
     }
   };
 
+  const sendLead = async (rowIndex: number) => {
+    await executeSend(rowIndex);
+    await fetchLeads(true);
+  };
+
   const sendBulk = async (rowIndexes: number[]) => {
     if (!rowIndexes.length) return;
-    setBulkProgress(`0 / ${rowIndexes.length}`);
 
-    for (let i = 0; i < rowIndexes.length; i++) {
-      setBulkProgress(`${i + 1} / ${rowIndexes.length}`);
-      await sendLead(rowIndexes[i]);
+    const unique = [...new Set(rowIndexes)];
+    setBulkProgress(`0 / ${unique.length} in progress`);
+
+    setSendingRows((prev) => new Set([...prev, ...unique]));
+    for (const rowIndex of unique) {
+      clearLeadProgress(rowIndex);
+      setLeadProgress(rowIndex, "Queued — starting…", "scraping");
     }
 
+    let done = 0;
+    const bumpDone = () => {
+      done += 1;
+      setBulkProgress(`${done} / ${unique.length} done`);
+    };
+
+    await Promise.allSettled(
+      unique.map(async (rowIndex) => {
+        const result = await executeSend(rowIndex);
+        bumpDone();
+        return result;
+      })
+    );
+
+    await fetchLeads(true);
     setBulkProgress(null);
     setSelected(new Set());
   };
@@ -370,13 +393,15 @@ export function Dashboard() {
               disabled={!selected.size || !!bulkProgress}
               style={btnPrimary}
             >
-              Send Selected ({selected.size})
+              Send Selected ({selected.size}) — parallel
             </button>
             <button onClick={sendAll} disabled={!stageLeads.length || !!bulkProgress} style={btnSecondary}>
-              Send All Ready
+              Send All Ready — parallel
             </button>
             {bulkProgress && (
-              <span style={{ fontSize: 12, color: "#7B9FFF" }}>Sending {bulkProgress}…</span>
+              <span style={{ fontSize: 12, color: "#7B9FFF" }}>
+                Bulk send: {bulkProgress} (all running in parallel)
+              </span>
             )}
           </div>
         )}
