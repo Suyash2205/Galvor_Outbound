@@ -7,6 +7,25 @@ export interface JobPollResult {
   email?: EmailContent;
 }
 
+export function phaseToProgress(phase: JobPhase | "sending" | "completed"): number {
+  switch (phase) {
+    case "scraping":
+      return 30;
+    case "fetching":
+      return 55;
+    case "analyzing":
+      return 75;
+    case "sending":
+      return 90;
+    case "completed":
+      return 100;
+    case "ready":
+      return 100;
+    default:
+      return 15;
+  }
+}
+
 export async function runLeadJobUntilReady(
   rowIndex: number,
   onProgress?: (message: string, phase: JobPhase) => void

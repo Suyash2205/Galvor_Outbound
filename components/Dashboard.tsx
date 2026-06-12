@@ -1,11 +1,13 @@
 "use client";
 
+import { LeadSendProgress, type RowSendState } from "@/components/LeadSendProgress";
 import { PreviewModal } from "@/components/PreviewModal";
-import { runLeadJobUntilReady } from "@/lib/job-client";
+import { phaseToProgress, runLeadJobUntilReady } from "@/lib/job-client";
+import type { JobPhase } from "@/lib/lead-job";
 import type { EmailContent, Lead, LeadStage } from "@/lib/types";
 import { STAGE_TABS } from "@/lib/types";
 import { signOut, useSession } from "next-auth/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const SPREADSHEET_ID = "1-nZCTRbeZCLgUPA91k37QlFHbL99sIKIdIUSB9tbmdc";
 
@@ -16,9 +18,11 @@ export function Dashboard() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [sendingRows, setSendingRows] = useState<Set<number>>(new Set());
+  const [rowProgress, setRowProgress] = useState<Record<number, RowSendState>>({});
   const [bulkProgress, setBulkProgress] = useState<string | null>(null);
+  const completedTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
 
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -27,9 +31,39 @@ export function Dashboard() {
   const [previewCompany, setPreviewCompany] = useState("");
   const [previewProgress, setPreviewProgress] = useState<string | null>(null);
 
-  const showToast = (msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 2500);
+  const showActionMessage = (msg: string) => {
+    setActionMessage(msg);
+    setTimeout(() => setActionMessage(null), 3000);
+  };
+
+  const setLeadProgress = (rowIndex: number, message: string, phase: JobPhase | "sending" | "completed", status: RowSendState["status"] = "active") => {
+    setRowProgress((prev) => ({
+      ...prev,
+      [rowIndex]: {
+        message,
+        percent: phaseToProgress(phase),
+        status,
+      },
+    }));
+  };
+
+  const clearLeadProgress = (rowIndex: number, delayMs = 0) => {
+    if (completedTimers.current[rowIndex]) {
+      clearTimeout(completedTimers.current[rowIndex]);
+      delete completedTimers.current[rowIndex];
+    }
+    const clear = () => {
+      setRowProgress((prev) => {
+        const next = { ...prev };
+        delete next[rowIndex];
+        return next;
+      });
+    };
+    if (delayMs > 0) {
+      completedTimers.current[rowIndex] = setTimeout(clear, delayMs);
+    } else {
+      clear();
+    }
   };
 
   const fetchLeads = useCallback(async () => {
@@ -87,10 +121,10 @@ export function Dashboard() {
     const res = await fetch("/api/sheets/init", { method: "POST" });
     const data = await res.json();
     if (!res.ok) {
-      showToast(data.error || "Sheet init failed");
+      setError(data.error || "Sheet init failed");
       return;
     }
-    showToast(`Tab "${data.tab}" ready with headers`);
+    showActionMessage(`Tab "${data.tab}" ready with headers`);
     fetchLeads();
   };
 
@@ -98,10 +132,10 @@ export function Dashboard() {
     const res = await fetch("/api/replies/check", { method: "POST" });
     const data = await res.json();
     if (!res.ok) {
-      showToast(data.error || "Reply check failed");
+      setError(data.error || "Reply check failed");
       return;
     }
-    showToast(`Checked ${data.checked} threads — ${data.moved} moved to Responses`);
+    showActionMessage(`Checked ${data.checked} threads — ${data.moved} moved to Responses`);
     fetchLeads();
   };
 
@@ -128,17 +162,30 @@ export function Dashboard() {
 
   const sendLead = async (rowIndex: number) => {
     setSendingRows((prev) => new Set(prev).add(rowIndex));
+    clearLeadProgress(rowIndex);
+    setLeadProgress(rowIndex, "Starting…", "scraping");
+
     try {
-      await runLeadJobUntilReady(rowIndex, (msg) => {
-        showToast(msg);
+      await runLeadJobUntilReady(rowIndex, (msg, phase) => {
+        setLeadProgress(rowIndex, msg, phase);
       });
+
+      setLeadProgress(rowIndex, "Sending email…", "sending");
+
       const res = await fetch(`/api/leads/${rowIndex}/send`, { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Send failed");
-      showToast(`Sent to ${data.lead.companyName}`);
+
+      setLeadProgress(rowIndex, "Completed", "completed", "completed");
+      clearLeadProgress(rowIndex, 4000);
       await fetchLeads();
     } catch (e) {
-      showToast(e instanceof Error ? e.message : "Send failed");
+      const message = e instanceof Error ? e.message : "Send failed";
+      setRowProgress((prev) => ({
+        ...prev,
+        [rowIndex]: { message, percent: 100, status: "error" },
+      }));
+      clearLeadProgress(rowIndex, 6000);
       await fetchLeads();
     } finally {
       setSendingRows((prev) => {
@@ -292,6 +339,22 @@ export function Dashboard() {
         )}
 
         {loading && <p style={{ color: "rgba(255,255,255,0.4)" }}>Loading leads…</p>}
+        {actionMessage && (
+          <div
+            style={{
+              background: "rgba(43,78,255,0.08)",
+              border: "1px solid rgba(43,78,255,0.2)",
+              borderRadius: 10,
+              padding: 12,
+              color: "#7B9FFF",
+              fontSize: 13,
+              marginBottom: 16,
+            }}
+          >
+            {actionMessage}
+          </div>
+        )}
+
         {error && (
           <div
             style={{
@@ -318,13 +381,14 @@ export function Dashboard() {
           {stageLeads.map((lead) => {
             const isSending = sendingRows.has(lead.rowIndex);
             const isBusy = lead.status === "generating" || lead.status === "sending" || isSending;
+            const progress = rowProgress[lead.rowIndex];
 
             return (
               <div
                 key={lead.rowIndex}
                 style={{
                   background: "rgba(255,255,255,0.025)",
-                  border: "1px solid rgba(255,255,255,0.08)",
+                  border: `1px solid ${progress?.status === "completed" ? "rgba(16,185,129,0.25)" : "rgba(255,255,255,0.08)"}`,
                   borderRadius: 12,
                   padding: "16px 18px",
                   display: "flex",
@@ -341,6 +405,9 @@ export function Dashboard() {
                     disabled={isBusy}
                   />
                 )}
+
+                {progress && <LeadSendProgress state={progress} />}
+
                 <div style={{ flex: 1, minWidth: 200 }}>
                   <div style={{ fontSize: 14, fontWeight: 600, color: "#fff" }}>{lead.companyName || "—"}</div>
                   <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", marginTop: 3 }}>
@@ -370,7 +437,7 @@ export function Dashboard() {
                         Preview
                       </button>
                       <button onClick={() => sendLead(lead.rowIndex)} disabled={isBusy} style={btnPrimary}>
-                        {isBusy ? "Sending…" : "Send"}
+                        {isBusy ? "…" : "Send"}
                       </button>
                     </>
                   )}
@@ -409,24 +476,6 @@ export function Dashboard() {
         progressMessage={previewProgress}
       />
 
-      {toast && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: 22,
-            right: 22,
-            background: "#10B981",
-            color: "#fff",
-            padding: "11px 18px",
-            borderRadius: 10,
-            fontSize: 13,
-            fontWeight: 500,
-            zIndex: 400,
-          }}
-        >
-          {toast}
-        </div>
-      )}
     </>
   );
 }
