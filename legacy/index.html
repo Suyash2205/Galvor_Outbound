@@ -1,0 +1,1073 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Galvor — Outbound Email Generator</title>
+<link href="https://fonts.googleapis.com/css2?family=Merriweather+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --navy: #07091A;
+  --blue: #2B4EFF;
+  --blue-dim: rgba(43,78,255,0.08);
+  --blue-border: rgba(43,78,255,0.25);
+  --green: #10B981;
+  --red: #EF4444;
+  --text: rgba(255,255,255,0.85);
+  --muted: rgba(255,255,255,0.4);
+  --faint: rgba(255,255,255,0.1);
+  --border: rgba(255,255,255,0.08);
+  --r: 10px;
+  --r-lg: 16px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Merriweather Sans', -apple-system, sans-serif;
+  background: #0B0D1F;
+  color: var(--text);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── HEADER ──────────────────────────────────────── */
+header {
+  background: rgba(7,9,26,0.96);
+  border-bottom: 1px solid var(--border);
+  padding: 0 40px;
+  height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: blur(12px);
+}
+
+.logo {
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.badge {
+  background: rgba(43,78,255,0.15);
+  border: 1px solid rgba(43,78,255,0.3);
+  color: #7B9FFF;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: 20px;
+  letter-spacing: 0.02em;
+}
+
+/* ── LAYOUT ──────────────────────────────────────── */
+.main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 36px 40px 60px;
+  display: grid;
+  grid-template-columns: 400px 1fr;
+  gap: 28px;
+  align-items: start;
+}
+
+/* ── PANEL ───────────────────────────────────────── */
+.panel {
+  background: rgba(255,255,255,0.025);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 26px 24px;
+}
+
+.panel-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  margin-bottom: 22px;
+}
+
+/* ── FORM ────────────────────────────────────────── */
+.fg { margin-bottom: 16px; }
+
+label, .lbl {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--muted);
+  margin-bottom: 7px;
+  letter-spacing: 0.03em;
+}
+
+input[type="text"],
+input[type="password"],
+textarea {
+  width: 100%;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: var(--r);
+  padding: 10px 13px;
+  color: #fff;
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.18s, background 0.18s;
+  line-height: 1.5;
+}
+
+input:focus, textarea:focus {
+  border-color: rgba(43,78,255,0.5);
+  background: rgba(43,78,255,0.04);
+}
+
+input::placeholder, textarea::placeholder { color: rgba(255,255,255,0.18); }
+
+textarea { resize: vertical; min-height: 72px; }
+
+/* api key row */
+.key-row { position: relative; }
+.key-row input { padding-right: 52px; }
+.key-toggle {
+  position: absolute; right: 0; top: 0; bottom: 0;
+  background: none; border: none; cursor: pointer;
+  color: var(--muted); font-size: 11px; padding: 0 14px;
+  font-family: inherit; font-weight: 500;
+  transition: color 0.15s;
+}
+.key-toggle:hover { color: rgba(255,255,255,0.7); }
+
+
+/* divider */
+.div { height: 1px; background: rgba(255,255,255,0.06); margin: 20px 0; }
+
+/* section label */
+.sec {
+  font-size: 10.5px; font-weight: 600; color: rgba(255,255,255,0.2);
+  text-transform: uppercase; letter-spacing: 0.1em;
+  margin: 20px 0 16px;
+  display: flex; align-items: center; gap: 10px;
+}
+.sec::after { content: ''; flex: 1; height: 1px; background: rgba(255,255,255,0.06); }
+
+/* ── BUTTON ──────────────────────────────────────── */
+.btn-gen {
+  width: 100%;
+  background: var(--blue);
+  color: #fff;
+  border: none;
+  border-radius: var(--r);
+  padding: 13px;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.btn-gen:hover:not(:disabled) { background: #3D5EFF; transform: translateY(-1px); }
+.btn-gen:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+
+/* spinner */
+.spin {
+  width: 15px; height: 15px;
+  border: 2px solid rgba(255,255,255,0.25);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.65s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* error */
+.err {
+  background: rgba(239,68,68,0.08);
+  border: 1px solid rgba(239,68,68,0.2);
+  border-radius: var(--r);
+  padding: 11px 14px;
+  font-size: 12.5px;
+  color: #FCA5A5;
+  margin-top: 14px;
+  display: none;
+  line-height: 1.5;
+}
+
+/* ── PREVIEW PANEL ───────────────────────────────── */
+.preview-wrap {
+  position: sticky;
+  top: 82px;
+}
+
+.preview-empty {
+  text-align: center;
+  padding: 72px 32px;
+}
+.preview-empty-icon { font-size: 36px; color: rgba(255,255,255,0.08); margin-bottom: 14px; }
+.preview-empty-text { font-size: 13px; color: rgba(255,255,255,0.2); line-height: 1.7; }
+
+/* email */
+.email-meta-label {
+  font-size: 10.5px; font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 5px;
+}
+.email-subject-val {
+  font-size: 14px; font-weight: 600; color: #fff;
+  margin-bottom: 20px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  line-height: 1.5;
+}
+
+.email-para {
+  font-size: 13.5px; color: rgba(255,255,255,0.75);
+  line-height: 1.85; margin-bottom: 14px; white-space: pre-wrap;
+}
+
+.insight-block {
+  font-size: 13.5px; color: rgba(255,255,255,0.88);
+  line-height: 1.85;
+  background: rgba(43,78,255,0.06);
+  border-left: 3px solid #2B4EFF;
+  padding: 13px 16px;
+  border-radius: 0 8px 8px 0;
+  margin: 6px 0 18px;
+  font-style: italic;
+}
+
+/* cluster table */
+.c-table {
+  width: 100%; border-collapse: collapse;
+  margin: 4px 0 18px; font-size: 12px;
+}
+.c-table th {
+  background: rgba(43,78,255,0.08);
+  color: rgba(255,255,255,0.5);
+  font-weight: 600; text-align: left;
+  padding: 8px 11px;
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em;
+  border-bottom: 1px solid rgba(43,78,255,0.2);
+}
+.c-table td {
+  padding: 8px 11px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  color: rgba(255,255,255,0.7);
+  vertical-align: top;
+  line-height: 1.4;
+}
+.c-table tr:last-child td { border-bottom: none; }
+.c-table tr:hover td { background: rgba(255,255,255,0.018); }
+.td-name { font-weight: 600; color: #fff; }
+.td-count { font-weight: 700; color: #7B9FFF; }
+.td-zero { color: rgba(255,255,255,0.25) !important; }
+
+/* tabs */
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  padding-bottom: 14px;
+}
+.tab-btn {
+  background: none;
+  border: 1px solid rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.4);
+  border-radius: 6px;
+  padding: 7px 16px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+.tab-btn:hover { color: rgba(255,255,255,0.7); border-color: rgba(255,255,255,0.2); }
+.tab-btn.active {
+  background: rgba(43,78,255,0.12);
+  border-color: rgba(43,78,255,0.4);
+  color: #7B9FFF;
+}
+
+/* copy bar */
+.copy-bar {
+  display: flex; gap: 9px;
+  margin-top: 20px; padding-top: 18px;
+  border-top: 1px solid rgba(255,255,255,0.07);
+}
+.btn-copy {
+  flex: 1;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.09);
+  color: rgba(255,255,255,0.6);
+  border-radius: var(--r);
+  padding: 10px;
+  font-family: inherit; font-size: 12.5px; font-weight: 500;
+  cursor: pointer; transition: all 0.18s;
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+}
+.btn-copy:hover { background: rgba(255,255,255,0.07); color: #fff; }
+.btn-copy.copied {
+  background: rgba(16,185,129,0.08);
+  border-color: rgba(16,185,129,0.25);
+  color: #10B981;
+}
+
+/* status log */
+.status-log {
+  margin-top: 14px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: var(--r);
+  padding: 12px 14px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 2;
+}
+.status-line { display: flex; align-items: center; gap: 8px; }
+.status-line.done { color: var(--green); }
+.status-line.active { color: rgba(255,255,255,0.7); }
+.s-dot {
+  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+  background: currentColor;
+}
+.s-dot.spinning {
+  background: none;
+  border: 1.5px solid currentColor;
+  border-top-color: transparent;
+  animation: spin 0.65s linear infinite;
+}
+
+/* toast */
+.toast {
+  position: fixed; bottom: 22px; right: 22px;
+  background: #10B981; color: #fff;
+  padding: 11px 18px; border-radius: var(--r);
+  font-size: 13px; font-weight: 500;
+  transform: translateY(80px); opacity: 0;
+  transition: all 0.28s cubic-bezier(.34,1.56,.64,1);
+  z-index: 200; pointer-events: none;
+}
+.toast.show { transform: translateY(0); opacity: 1; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    Galvor
+    <span class="badge">Outbound Email Generator</span>
+  </div>
+</header>
+
+<div class="main">
+
+  <!-- ── LEFT: INPUTS ─────────────────────────────── -->
+  <div>
+    <div class="panel">
+      <div class="panel-label">Configuration</div>
+
+      <div class="fg">
+        <label>Claude API Key</label>
+        <div class="key-row">
+          <input type="password" id="apiKey" placeholder="sk-ant-api03-..." autocomplete="off">
+          <button class="key-toggle" onclick="toggleKey(this,'apiKey')">show</button>
+        </div>
+      </div>
+
+      <div class="fg">
+        <label>Apify API Key</label>
+        <div class="key-row">
+          <input type="password" id="apifyKey" placeholder="apify_api_..." autocomplete="off">
+          <button class="key-toggle" onclick="toggleKey(this,'apifyKey')">show</button>
+        </div>
+      </div>
+
+      <div class="div"></div>
+      <div class="sec">Recipient</div>
+
+      <div class="fg">
+        <label>Brand Name</label>
+        <input type="text" id="brandName" placeholder="e.g. Blackberrys, Angel One">
+      </div>
+
+      <div class="fg">
+        <label>Contact First Name</label>
+        <input type="text" id="firstName" placeholder="e.g. Priyanka">
+      </div>
+
+      <div class="fg">
+        <label>Industry / Niche</label>
+        <input type="text" id="industry" placeholder="e.g. D2C men's fashion">
+      </div>
+
+      <div class="div"></div>
+      <div class="sec">Ad Data</div>
+
+      <div class="fg">
+        <label>Meta Ad Library URL</label>
+        <input type="text" id="adLibraryUrl" placeholder="https://www.facebook.com/ads/library/?...">
+      </div>
+
+      <div class="div"></div>
+      <div class="sec">Closing Copy</div>
+
+      <div class="fg">
+        <label>Case Study / CTA Block</label>
+        <textarea id="closingText" rows="4">A brand we work with moved into that format first — 4.84× RoAS vs. a 2.49× baseline. +67% overall.
+
+30 minutes. Your competitor map. One creative cluster your team isn't running yet.</textarea>
+      </div>
+
+      <button class="btn-gen" id="genBtn" onclick="generate()">
+        <span id="genLabel">Generate Email</span>
+      </button>
+
+      <div class="status-log" id="statusLog" style="display:none"></div>
+      <div class="err" id="errMsg"></div>
+    </div>
+  </div>
+
+  <!-- ── RIGHT: PREVIEW ───────────────────────────── -->
+  <div class="preview-wrap">
+    <div class="panel">
+
+      <div id="previewEmpty" class="preview-empty">
+        <div class="preview-empty-icon">✉</div>
+        <div class="preview-empty-text">
+          Fill in the details and paste an Ad Library URL<br>to generate your personalized email
+        </div>
+      </div>
+
+      <div id="emailOut" style="display:none">
+        <div class="panel-label">Email Preview</div>
+
+        <div class="tabs">
+          <button class="tab-btn active" onclick="switchTab(1)">Email 1</button>
+          <button class="tab-btn" onclick="switchTab(2)">Follow-up</button>
+        </div>
+
+        <!-- Email 1 -->
+        <div id="email1Content">
+          <div class="email-meta-label">Subject</div>
+          <div class="email-subject-val" id="eSubject"></div>
+          <div id="eBody"></div>
+          <div class="copy-bar">
+            <button class="btn-copy" id="copySubBtn" onclick="copyPart('subject')">Copy Subject</button>
+            <button class="btn-copy" id="copyBodyBtn" onclick="copyPart('body')">Copy Body</button>
+            <button class="btn-copy" id="copyAllBtn" onclick="copyPart('all')">Copy All</button>
+          </div>
+        </div>
+
+        <!-- Follow-up Email -->
+        <div id="email2Content" style="display:none">
+          <div class="email-meta-label">Subject</div>
+          <div class="email-subject-val" id="e2Subject"></div>
+          <div id="e2Body"></div>
+          <div class="copy-bar">
+            <button class="btn-copy" id="copy2SubBtn" onclick="copyPart2('subject')">Copy Subject</button>
+            <button class="btn-copy" id="copy2BodyBtn" onclick="copyPart2('body')">Copy Body</button>
+            <button class="btn-copy" id="copy2AllBtn" onclick="copyPart2('all')">Copy All</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast">Copied!</div>
+
+<script>
+// ── State ──────────────────────────────────────────
+let emailState = null;
+let activeTab = 1;
+
+// ── Init ───────────────────────────────────────────
+window.addEventListener('load', () => {
+  const k = localStorage.getItem('gv_api_key');
+  const a = localStorage.getItem('gv_apify_key');
+  if (k) document.getElementById('apiKey').value = k;
+  if (a) document.getElementById('apifyKey').value = a;
+});
+
+// ── UI helpers ─────────────────────────────────────
+function toggleKey(btn, id) {
+  const inp = document.getElementById(id);
+  const show = inp.type === 'password';
+  inp.type = show ? 'text' : 'password';
+  btn.textContent = show ? 'hide' : 'show';
+}
+
+function showErr(msg) {
+  const el = document.getElementById('errMsg');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+function clearErr() {
+  document.getElementById('errMsg').style.display = 'none';
+}
+
+// ── Status log ─────────────────────────────────────
+let statusLines = [];
+
+function initStatus() {
+  statusLines = [];
+  const el = document.getElementById('statusLog');
+  el.innerHTML = '';
+  el.style.display = 'block';
+}
+
+function addStatus(msg, state = 'active') {
+  // Mark previous active line as done
+  statusLines.forEach(l => { if (l.state === 'active') l.state = 'done'; });
+  const line = { msg, state, id: 'sl' + statusLines.length };
+  statusLines.push(line);
+  renderStatus();
+  return line;
+}
+
+function renderStatus() {
+  document.getElementById('statusLog').innerHTML = statusLines.map(l => {
+    const dotClass = l.state === 'active' ? 's-dot spinning' : 's-dot';
+    return `<div class="status-line ${l.state}">
+      <span class="${dotClass}"></span><span>${l.msg}</span>
+    </div>`;
+  }).join('');
+}
+
+function hideStatus() {
+  document.getElementById('statusLog').style.display = 'none';
+}
+
+function setLoading(on) {
+  const btn = document.getElementById('genBtn');
+  btn.disabled = on;
+  btn.innerHTML = on
+    ? '<div class="spin"></div><span>Working…</span>'
+    : '<span>Generate Email</span>';
+}
+
+function switchTab(n) {
+  activeTab = n;
+  document.getElementById('email1Content').style.display = n === 1 ? 'block' : 'none';
+  document.getElementById('email2Content').style.display = n === 2 ? 'block' : 'none';
+  document.querySelectorAll('.tab-btn').forEach((btn, i) => {
+    btn.classList.toggle('active', i + 1 === n);
+  });
+}
+
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+// ── Main flow ──────────────────────────────────────
+async function generate() {
+  clearErr();
+
+  const apiKey    = document.getElementById('apiKey').value.trim();
+  const apifyKey  = document.getElementById('apifyKey').value.trim();
+  const brandName = document.getElementById('brandName').value.trim();
+  const firstName = document.getElementById('firstName').value.trim();
+  const industry  = document.getElementById('industry').value.trim();
+  const closing   = document.getElementById('closingText').value.trim();
+  const adUrl     = document.getElementById('adLibraryUrl').value.trim();
+
+  if (!apiKey)    return showErr('Claude API key is required.');
+  if (!apifyKey)  return showErr('Apify API key is required.');
+  if (!brandName) return showErr('Brand name is required.');
+  if (!firstName) return showErr('Contact first name is required.');
+  if (!industry)  return showErr('Industry / niche is required.');
+  if (!adUrl)     return showErr('Meta Ad Library URL is required.');
+
+  localStorage.setItem('gv_api_key',   apiKey);
+  localStorage.setItem('gv_apify_key', apifyKey);
+  setLoading(true);
+  initStatus();
+
+  try {
+    // ── 1. Scrape via Apify ──
+    addStatus('Starting Apify scraper…');
+    const items = await runApify(apifyKey, adUrl);
+    addStatus(`Fetched ${items.length} ads — sending to Claude…`);
+
+    // ── 2. Process items ──
+    const ads = processApifyItems(items);
+    if (!ads.length) throw new Error('No ads with valid start dates found. Check the URL.');
+
+    // ── 3. Call Claude ──
+    const prompt = buildPrompt(brandName, industry, ads);
+    const raw = await callClaude(apiKey, prompt);
+    addStatus('Email generated');
+
+    // ── 4. Parse + render ──
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error('Unexpected response format from Claude. Please try again.');
+    const result = JSON.parse(match[0]);
+    if (!result.clusters?.length || !result.insight) {
+      throw new Error('Claude response was incomplete. Please try again.');
+    }
+
+    emailState = { brandName, firstName, industry, closing, result };
+    renderEmail(emailState);
+    hideStatus();
+
+  } catch (e) {
+    showErr(e.message || 'Something went wrong. Please try again.');
+    hideStatus();
+  } finally {
+    setLoading(false);
+  }
+}
+
+// ── Apify ──────────────────────────────────────────
+const APIFY_ACTOR = 'apify~facebook-ads-scraper';
+
+async function runApify(apiKey, adLibraryUrl) {
+  // maxItems query param controls pay-per-result limit ($0.005/result × 200 = $1 max)
+  const params = new URLSearchParams({ token: apiKey, maxItems: '200' });
+  const startRes = await fetch(
+    `https://api.apify.com/v2/acts/${APIFY_ACTOR}/runs?${params}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ startUrls: [{ url: adLibraryUrl }], resultsLimit: 200 }),
+    }
+  );
+
+  if (!startRes.ok) {
+    const err = await startRes.json().catch(() => ({}));
+    const msg = err?.error?.message || '';
+    if (startRes.status === 401) throw new Error('Invalid Apify API key.');
+    throw new Error(`Apify start error ${startRes.status}${msg ? ': ' + msg : ''}`);
+  }
+
+  const { data: run } = await startRes.json();
+  const { id: runId, defaultDatasetId } = run;
+
+  // Poll until done
+  addStatus('Scraping in progress… (this usually takes 1–2 min)');
+  await pollApifyRun(apiKey, runId);
+
+  // Fetch dataset
+  const dataRes = await fetch(
+    `https://api.apify.com/v2/datasets/${defaultDatasetId}/items?token=${apiKey}&format=json&clean=true`
+  );
+  if (!dataRes.ok) throw new Error(`Failed to fetch Apify results (${dataRes.status})`);
+
+  return dataRes.json();
+}
+
+async function pollApifyRun(apiKey, runId) {
+  const timeout = 180_000; // 3 min
+  const interval = 5_000;
+  const start = Date.now();
+
+  while (Date.now() - start < timeout) {
+    await sleep(interval);
+    const res = await fetch(`https://api.apify.com/v2/actor-runs/${runId}?token=${apiKey}`);
+    if (!res.ok) continue;
+    const { data } = await res.json();
+    if (data.status === 'SUCCEEDED') return;
+    if (data.status === 'FAILED' || data.status === 'ABORTED' || data.status === 'TIMED-OUT') {
+      throw new Error(`Apify run ${data.status.toLowerCase()}. Check your Ad Library URL.`);
+    }
+  }
+  throw new Error('Apify run timed out after 3 minutes.');
+}
+
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+function processApifyItems(items) {
+  const today = new Date();
+  return items.map(item => {
+    const startStr = item.startDateFormatted ?? item['startDateFormatted'];
+    const start = startStr ? new Date(startStr) : null;
+    if (!start || isNaN(start)) return null;
+
+    const ageDays = Math.max(0, Math.floor((today - start) / 86400000));
+
+    // Handle nested JSON (from API) or flat keys (from CSV-parsed fallback)
+    const title  = item?.snapshot?.title  ?? item['snapshot.title']  ?? '';
+    const format = item?.snapshot?.displayFormat ?? item['snapshot.displayFormat'] ?? '';
+    const active = item.isActive === true || item.isActive === 'true';
+
+    const platforms = Array.isArray(item.publisherPlatform)
+      ? item.publisherPlatform
+      : ['publisherPlatform/0','publisherPlatform/1','publisherPlatform/2',
+         'publisherPlatform/3','publisherPlatform/4'].map(k => item[k]).filter(Boolean);
+
+    // Strip Facebook dynamic variables e.g. {{product.name}}, {{headline}}
+    const cleanTitle = String(title).replace(/\{\{[^}]*\}\}/g, '').replace(/\s+/g, ' ').trim();
+
+    // DCO ads with no real title → label by format so Claude understands what they are
+    const displayTitle = cleanTitle || (format === 'DCO' ? 'Catalog/DPA ad (dynamic product feed)' : `${format || 'Ad'}`);
+
+    return { title: displayTitle, format, active, ageDays, platforms };
+  }).filter(Boolean);
+}
+
+// ── Prompt ─────────────────────────────────────────
+function buildPrompt(brandName, industry, ads) {
+  // Cap at 120 ads to stay within context limits
+  const sample = ads.slice(0, 120);
+  return `You are a sharp ad intelligence analyst at Galvor, a performance marketing agency.
+
+Analyze this Meta (Facebook/Instagram) Ad Library data for "${brandName}" — a ${industry} brand.
+
+TASK 1 — Cluster the ads into 4–7 groups. Cluster by what actually differentiates the ads:
+- Content type: Offer/Discount, Problem–Solution, Explainer/Educational, Testimonial, Brand Story, etc.
+- Format: DCO/Catalog, Static Image, Video, Carousel, Reels/UGC
+- Product focus: if titles reveal specific SKUs, categories, or campaigns, split accordingly
+
+TASK 2 — Name each cluster in MAX 3 WORDS. Short, punchy, immediately readable. Examples of good names: "Catalog Retargeting", "Offer Drops", "Problem–Solution", "Explainer Videos", "Creator UGC", "Brand Story", "Product Launch". Never use full sentences or sub-clauses as names.
+
+TASK 3 — For each cluster: a 1-line description written in plain marketing language (what the ad IS trying to do — e.g. "Retargeting ads showing products from their catalog", "Discount-led ads pushing seasonal offers"). No technical jargon. A non-technical brand manager should immediately understand it. Include adCount, avgAgeDays (integer), oldestDays.
+
+TASK 4 — Write exactly 2 sentences of insight (under 40 words total). Use the actual brand name "${brandName}" — never write "the brand", "your brand", or any placeholder. Sentence 1: what dominates or is unusual about ${brandName}'s mix. Sentence 2: the one format/cluster ${brandName} isn't running that they should be.
+
+TASK 5 — Write a follow-up email body. Sent 3 days after email 1 with no reply. Follow this EXACT structure — 3 blocks separated by blank lines:
+
+Block 1 — "Hi ${firstName},"
+
+Block 2 — The data hook (2 sentences MAX):
+  Sentence 1: "Pulled ${brandName}'s ad library." then state ONE specific ratio or count from the clusters (e.g. "X of Y active ads are [dominant cluster type]").
+  Sentence 2: Combine the competitive gap AND the missing piece into one punchy sentence — e.g. "Your top ${industry} competitors are running [GAP FORMAT] that [benefit], and you're already producing [close equivalent] — just not getting [the missing piece]."
+
+Block 3 — Cost + offer (2 sentences): "That gap has a measurable RoAS cost. We can quantify it for ${brandName} specifically — 20 minutes, no deck."
+
+Block 4 — CTA (standalone line): "Worth a call this week?"
+
+Rules:
+- Use REAL numbers from the cluster data — never vague words like "many", "most", "several"
+- Use "${brandName}" — no placeholders ever
+- Do NOT reference the first email or say "I sent you something"
+- Tone: sharp, data-first, no fluff
+
+CRITICAL: Output must be ready to paste into an email with zero editing. Do NOT use placeholders, brackets, template variables like {{product.name}}, or anything the sender would need to fill in. Every word must be final and specific.
+
+Ad data (ageDays = days since ad went live):
+${JSON.stringify(sample)}
+
+Respond ONLY with valid JSON — no markdown, no explanation:
+{"clusters":[{"name":"...","description":"...","adCount":0,"avgAgeDays":0,"oldestDays":0}],"insight":"...","followUpBody":"..."}`;
+}
+
+// ── Claude API call ────────────────────────────────
+async function callClaude(apiKey, prompt) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1500,
+      messages: [{ role: 'user', content: prompt }],
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const msg = err?.error?.message || '';
+    if (res.status === 401) throw new Error('Invalid API key. Check your Claude API key.');
+    if (res.status === 429) throw new Error('Rate limit hit. Wait a moment and try again.');
+    throw new Error(`API error ${res.status}${msg ? ': ' + msg : ''}`);
+  }
+
+  const json = await res.json();
+  return json.content?.[0]?.text || '';
+}
+
+// ── Render email ────────────────────────────────────
+function renderEmail({ brandName, firstName, industry, closing, result }) {
+  const { clusters, insight } = result;
+
+  const subject = `${brandName} isn't running this. Your competitors will.`;
+  document.getElementById('eSubject').textContent = subject;
+
+  let html = '';
+
+  // Greeting + opener
+  html += `<div class="email-para">Hey ${firstName},\n\nWe map the ${industry} ad landscape weekly — every active format, every cluster, across the major players. ${brandName}'s pattern stood out.</div>`;
+
+  // Insight
+  html += `<div class="insight-block">${escHtml(insight)}</div>`;
+
+  // Table
+  html += `<table class="c-table"><thead><tr>
+    <th>Cluster</th><th>What it is</th><th>Ads</th><th>Avg Age</th><th>Oldest</th>
+  </tr></thead><tbody>`;
+
+  for (const c of clusters) {
+    const zero = c.adCount === 0;
+    html += `<tr>
+      <td class="td-name ${zero ? 'td-zero' : ''}">${escHtml(c.name)}</td>
+      <td>${escHtml(c.description)}</td>
+      <td class="td-count ${zero ? 'td-zero' : ''}">${zero ? '0' : c.adCount}</td>
+      <td class="${zero ? 'td-zero' : ''}">${zero ? '—' : c.avgAgeDays + ' days'}</td>
+      <td class="${zero ? 'td-zero' : ''}">${zero ? '—' : c.oldestDays + ' days'}</td>
+    </tr>`;
+  }
+  html += `</tbody></table>`;
+
+  // Closing
+  html += `<div class="email-para">${escHtml(closing)}\n\nWorth it?</div>`;
+
+  document.getElementById('eBody').innerHTML = html;
+
+  // Follow-up email
+  const followUpSubject = `Re: ${subject}`;
+  document.getElementById('e2Subject').textContent = followUpSubject;
+  let fu = result.followUpBody || '';
+  let fuHtml = '';
+  if (fu) {
+    const blocks = fu.split('\n\n').map(p => p.trim()).filter(Boolean);
+    blocks.forEach((p, i) => {
+      const mb = i === 0 ? '8px' : '24px';
+      fuHtml += `<div class="email-para" style="margin-bottom:${mb};">${escHtml(p)}</div>`;
+    });
+  } else {
+    fuHtml = `<div class="email-para" style="color:rgba(255,255,255,0.3);font-style:italic;">Follow-up not generated. Try regenerating.</div>`;
+  }
+  document.getElementById('e2Body').innerHTML = fuHtml;
+
+  // Reset to tab 1 on each new generation
+  switchTab(1);
+
+  document.getElementById('previewEmpty').style.display = 'none';
+  document.getElementById('emailOut').style.display = 'block';
+}
+
+// ── Copy ────────────────────────────────────────────
+function copyPart(part) {
+  if (!emailState) return;
+  const { brandName, firstName, industry, closing, result } = emailState;
+  const { clusters, insight } = result;
+  const subject = `${brandName} isn't running this. Your competitors will.`;
+
+  const btnId = part === 'subject' ? 'copySubBtn' : part === 'body' ? 'copyBodyBtn' : 'copyAllBtn';
+  const btnLabels = { subject: 'Copy Subject', body: 'Copy Body', all: 'Copy All' };
+  const btn = document.getElementById(btnId);
+
+  if (part === 'subject') {
+    // Plain text is fine for subject line
+    navigator.clipboard.writeText(subject)
+      .then(() => flashBtn(btn, btnLabels[part]))
+      .catch(() => showErr('Clipboard access denied.'));
+    return;
+  }
+
+  // For body / all — write rich HTML so Gmail renders the table
+  const html = buildGmailHtml({ brandName, firstName, industry, closing, clusters, insight });
+  const plain = buildPlainBody({ brandName, firstName, industry, closing, clusters, insight });
+
+  const fullHtml  = part === 'all' ? `<p style="font-family:Arial,sans-serif;font-size:13px;color:#444;margin:0 0 12px;"><b>Subject:</b> ${escHtml(subject)}</p>${html}` : html;
+  const fullPlain = part === 'all' ? `Subject: ${subject}\n\n${plain}` : plain;
+
+  if (window.ClipboardItem) {
+    const item = new ClipboardItem({
+      'text/html':  new Blob([fullHtml],  { type: 'text/html'  }),
+      'text/plain': new Blob([fullPlain], { type: 'text/plain' }),
+    });
+    navigator.clipboard.write([item])
+      .then(() => flashBtn(btn, btnLabels[part]))
+      .catch(() => showErr('Clipboard access denied. Try a different browser.'));
+  } else {
+    // Fallback: inject into a contenteditable and execCommand
+    const div = document.createElement('div');
+    div.contentEditable = 'true';
+    div.style.cssText = 'position:fixed;opacity:0;top:-9999px;left:-9999px';
+    div.innerHTML = fullHtml;
+    document.body.appendChild(div);
+    const sel = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(div);
+    sel.removeAllRanges();
+    sel.addRange(range);
+    document.execCommand('copy');
+    sel.removeAllRanges();
+    document.body.removeChild(div);
+    flashBtn(btn, btnLabels[part]);
+  }
+}
+
+function copyPart2(part) {
+  if (!emailState) return;
+  const { brandName, result } = emailState;
+  const origSubject = `${brandName} isn't running this. Your competitors will.`;
+  const followUpSubject = `Re: ${origSubject}`;
+  const followUpBody = result.followUpBody || '';
+
+  const btnId = part === 'subject' ? 'copy2SubBtn' : part === 'body' ? 'copy2BodyBtn' : 'copy2AllBtn';
+  const btnLabels = { subject: 'Copy Subject', body: 'Copy Body', all: 'Copy All' };
+  const btn = document.getElementById(btnId);
+
+  if (part === 'subject') {
+    navigator.clipboard.writeText(followUpSubject)
+      .then(() => flashBtn(btn, btnLabels[part]))
+      .catch(() => showErr('Clipboard access denied.'));
+    return;
+  }
+
+  const paras = followUpBody.split('\n\n').map(p => p.trim()).filter(Boolean);
+  const htmlBody = `<div style="font-family:Arial,sans-serif;font-size:14px;color:#1a1a1a;max-width:680px;">
+    ${paras.map((p, i) => {
+      const margin = i === 0 ? '0 0 6px' : '0 0 16px';
+      return `<p style="margin:${margin};font-family:Arial,sans-serif;font-size:14px;line-height:1.7;color:#1a1a1a;">${escHtml(p)}</p>`;
+    }).join('')}
+  </div>`;
+  const plainBody = followUpBody;
+
+  const fullHtml  = part === 'all' ? `<p style="font-family:Arial,sans-serif;font-size:13px;color:#444;margin:0 0 12px;"><b>Subject:</b> ${escHtml(followUpSubject)}</p>${htmlBody}` : htmlBody;
+  const fullPlain = part === 'all' ? `Subject: ${followUpSubject}\n\n${plainBody}` : plainBody;
+
+  if (window.ClipboardItem) {
+    const item = new ClipboardItem({
+      'text/html':  new Blob([fullHtml],  { type: 'text/html'  }),
+      'text/plain': new Blob([fullPlain], { type: 'text/plain' }),
+    });
+    navigator.clipboard.write([item])
+      .then(() => flashBtn(btn, btnLabels[part]))
+      .catch(() => showErr('Clipboard access denied. Try a different browser.'));
+  } else {
+    const div = document.createElement('div');
+    div.contentEditable = 'true';
+    div.style.cssText = 'position:fixed;opacity:0;top:-9999px;left:-9999px';
+    div.innerHTML = fullHtml;
+    document.body.appendChild(div);
+    const sel = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(div);
+    sel.removeAllRanges();
+    sel.addRange(range);
+    document.execCommand('copy');
+    sel.removeAllRanges();
+    document.body.removeChild(div);
+    flashBtn(btn, btnLabels[part]);
+  }
+}
+
+function flashBtn(btn, originalLabel) {
+  btn.classList.add('copied');
+  btn.textContent = 'Copied!';
+  toast('Copied — paste directly into Gmail');
+  setTimeout(() => {
+    btn.classList.remove('copied');
+    btn.textContent = originalLabel;
+  }, 2200);
+}
+
+// ── Helpers ─────────────────────────────────────────
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// Builds inline-styled HTML that Gmail renders properly when pasted
+function buildGmailHtml({ brandName, firstName, industry, closing, clusters, insight }) {
+  const p = (content) =>
+    `<p style="margin:0 0 16px;font-family:Arial,sans-serif;font-size:14px;line-height:1.7;color:#1a1a1a;">${content}</p>`;
+
+  const closingLines = closing.split('\n').filter(l => l.trim()).map(l => escHtml(l)).join('<br>');
+
+  const thStyle = 'padding:8px 12px;background:#f2f2f2;font-weight:600;text-align:left;border:1px solid #d0d0d0;font-family:Arial,sans-serif;font-size:12px;color:#555;white-space:nowrap;';
+  const tdStyle = (bold) => `padding:8px 12px;border:1px solid #e0e0e0;font-family:Arial,sans-serif;font-size:13px;color:${bold ? '#111' : '#333'};vertical-align:top;line-height:1.4;${bold ? 'font-weight:600;' : ''}`;
+
+  let rows = '';
+  for (const c of clusters) {
+    const zero = c.adCount === 0;
+    rows += `<tr>
+      <td style="${tdStyle(true)}">${escHtml(c.name)}</td>
+      <td style="${tdStyle(false)}">${escHtml(c.description)}</td>
+      <td style="${tdStyle(false)}text-align:center;color:${zero ? '#aaa' : '#2B4EFF'};font-weight:600;">${zero ? '0' : c.adCount}</td>
+      <td style="${tdStyle(false)}text-align:center;color:${zero ? '#aaa' : '#333'};">${zero ? '—' : c.avgAgeDays + ' days'}</td>
+      <td style="${tdStyle(false)}text-align:center;color:${zero ? '#aaa' : '#333'};">${zero ? '—' : c.oldestDays + ' days'}</td>
+    </tr>`;
+  }
+
+  const table = `<table style="border-collapse:collapse;width:100%;margin:4px 0 20px;font-family:Arial,sans-serif;">
+    <thead><tr>
+      <th style="${thStyle}">Cluster</th>
+      <th style="${thStyle}">What it is</th>
+      <th style="${thStyle}text-align:center;">Ads</th>
+      <th style="${thStyle}text-align:center;">Avg Age</th>
+      <th style="${thStyle}text-align:center;">Oldest</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+
+  return `<div style="font-family:Arial,sans-serif;font-size:14px;color:#1a1a1a;max-width:680px;">
+    ${p(`Hey ${escHtml(firstName)},`)}
+    ${p(`We map the ${escHtml(industry)} ad landscape weekly — every active format, every cluster, across the major players. ${escHtml(brandName)}'s pattern stood out.`)}
+    ${p(`<em>${escHtml(insight)}</em>`)}
+    ${table}
+    ${p(closingLines)}
+    ${p('Worth it?')}
+  </div>`;
+}
+
+function buildPlainBody({ brandName, firstName, industry, closing, clusters, insight }) {
+  const tableText = buildPlainTable(clusters);
+  return `Hey ${firstName},
+
+We map the ${industry} ad landscape weekly — every active format, every cluster, across the major players. ${brandName}'s pattern stood out.
+
+${insight}
+
+${tableText}
+
+${closing}
+
+Worth it?`;
+}
+
+function buildPlainTable(clusters) {
+  const cols = [
+    { key: 'name',        label: 'Cluster',    w: 30 },
+    { key: 'description', label: 'What it is', w: 32 },
+    { key: 'adCount',     label: 'Ads',        w: 5  },
+    { key: 'avgAgeDays',  label: 'Avg Age',    w: 9  },
+    { key: 'oldestDays',  label: 'Oldest',     w: 9  },
+  ];
+  const pad = (v, w) => String(v).substring(0, w).padEnd(w);
+  const header = cols.map(c => pad(c.label, c.w)).join('  ');
+  const rule   = cols.map(c => '-'.repeat(c.w)).join('  ');
+  const rows   = clusters.map(c => {
+    const zero = c.adCount === 0;
+    return cols.map((col, i) => {
+      let v;
+      if (i === 0) v = c.name;
+      else if (i === 1) v = c.description;
+      else if (i === 2) v = zero ? '0' : c.adCount;
+      else if (i === 3) v = zero ? '—' : c.avgAgeDays + 'd';
+      else v = zero ? '—' : c.oldestDays + 'd';
+      return pad(v, col.w);
+    }).join('  ');
+  });
+  return [header, rule, ...rows].join('\n');
+}
+</script>
+</body>
+</html>
