@@ -13,7 +13,38 @@ export function buildEmail1Subject(brandName: string): string {
 }
 
 export function buildEmail2Subject(brandName: string): string {
-  return `Re: ${buildEmail1Subject(brandName)}`;
+  return followUpSubject(buildEmail1Subject(brandName));
+}
+
+export function followUpSubject(originalSubject: string): string {
+  const trimmed = originalSubject.trim();
+  if (/^re:\s/i.test(trimmed)) return trimmed;
+  return `Re: ${trimmed}`;
+}
+
+export function appendQuotedReply(
+  plainBody: string,
+  htmlBody: string,
+  quote: { attribution: string; plain: string; html?: string }
+): { plainBody: string; htmlBody: string } {
+  const quotedPlain = quote.plain
+    .split("\n")
+    .map((line) => `> ${line}`)
+    .join("\n");
+
+  const quoteHtml =
+    quote.html ||
+    quote.plain
+      .split("\n")
+      .map((line) => escHtml(line))
+      .join("<br>");
+
+  return {
+    plainBody: `${plainBody.trim()}\n\n${quote.attribution}\n\n${quotedPlain}`,
+    htmlBody: `${htmlBody.trim()}<div class="gmail_quote"><div dir="ltr" class="gmail_attr">${escHtml(
+      quote.attribution
+    )}<br></div><blockquote class="gmail_quote" style="margin:0 0 0 .8ex;border-left:1px #ccc solid;padding-left:1ex">${quoteHtml}</blockquote></div>`,
+  };
 }
 
 function buildPlainTable(clusters: AdCluster[]): string {
@@ -168,9 +199,13 @@ export function buildEmail2Content(brandName: string, analysis: ClaudeAnalysis):
   };
 }
 
-export function buildPlaceholderEmail(stage: number, companyName: string, firstName: string): EmailContent {
+export function buildPlaceholderEmail(
+  stage: number,
+  companyName: string,
+  firstName: string
+): EmailContent {
   return {
-    subject: `Following up — ${companyName}`,
+    subject: buildEmail2Subject(companyName),
     htmlBody: `<p>Hi ${escHtml(firstName)},</p><p><em>Email ${stage} template coming soon.</em></p>`,
     plainBody: `Hi ${firstName},\n\nEmail ${stage} template coming soon.`,
   };

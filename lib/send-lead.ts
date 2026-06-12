@@ -1,5 +1,12 @@
 import { ensureLeadReady } from "./lead-job";
-import { getGmailMessageUrl, resolveFollowUpHeaders, sendGmailMessage } from "./gmail";
+import { appendQuotedReply } from "./email/templates";
+import {
+  getGmailMessageUrl,
+  getGmailThreadUrl,
+  getThreadReplyContext,
+  resolveFollowUpHeaders,
+  sendGmailMessage,
+} from "./gmail";
 import {
   fetchLeadByRow,
   nextStage,
@@ -53,29 +60,78 @@ export async function sendLeadEmail(params: {
 
     const isFollowUp = currentStage !== "1";
 
+    let subject = email.subject;
+    let plainBody = email.plainBody;
+    let htmlBody = email.htmlBody;
     let threadHeaders: { threadId?: string; inReplyTo?: string; references?: string } = {};
+
     if (isFollowUp) {
-      if (!lead.lastGmailMessageId && !lead.gmailThreadId) {
+      if (!lead.gmailThreadId) {
         throw new Error(
-          "Missing Email 1 thread info. Send Email 1 first, or check gmail_thread_id / last_gmail_message_id in the sheet."
+          "Missing gmail_thread_id. Follow-ups must be sent in the same Gmail thread as Email 1 — send Email 1 first."
         );
       }
-      threadHeaders = await resolveFollowUpHeaders(
-        accessToken,
-        lead.lastGmailMessageId,
-        lead.gmailThreadId
-      );
+
+      // Always reply inside the original Email 1 thread.
+      threadHeaders.threadId = lead.gmailThreadId;
+
+      if (lead.lastGmailMessageId) {
+        const ctx = await getThreadReplyContext(
+          accessToken,
+          lead.gmailThreadId,
+          lead.lastGmailMessageId
+        );
+        if (ctx) {
+          subject = ctx.subject;
+          threadHeaders = {
+            threadId: ctx.threadId,
+            inReplyTo: ctx.inReplyTo,
+            references: ctx.references,
+          };
+          if (ctx.quote.plain.trim()) {
+            const quoted = appendQuotedReply(plainBody, htmlBody, ctx.quote);
+            plainBody = quoted.plainBody;
+            htmlBody = quoted.htmlBody;
+          }
+        }
+      }
+
+      if (!threadHeaders.inReplyTo) {
+        const fallback = await resolveFollowUpHeaders(
+          accessToken,
+          lead.lastGmailMessageId,
+          lead.gmailThreadId
+        );
+        threadHeaders = {
+          threadId: fallback.threadId,
+          inReplyTo: fallback.inReplyTo,
+          references: fallback.references,
+        };
+        if (fallback.subject) subject = fallback.subject;
+      }
+
+      if (!threadHeaders.threadId || !threadHeaders.inReplyTo) {
+        throw new Error(
+          "Could not attach follow-up to the existing Gmail thread. Check gmail_thread_id in the sheet."
+        );
+      }
     }
 
     const { messageId, threadId } = await sendGmailMessage({
       accessToken,
       from: senderEmail,
       to: lead.email,
-      subject: email.subject,
-      htmlBody: email.htmlBody,
-      plainBody: email.plainBody,
+      subject,
+      htmlBody,
+      plainBody,
       ...threadHeaders,
     });
+
+    if (isFollowUp && lead.gmailThreadId && threadId && threadId !== lead.gmailThreadId) {
+      throw new Error(
+        `Follow-up was not added to the original thread (got ${threadId}, expected ${lead.gmailThreadId}).`
+      );
+    }
 
     const now = new Date().toISOString();
     const sentField = stageToSentField(currentStage);
@@ -99,7 +155,9 @@ export async function sendLeadEmail(params: {
       lead: updated,
       messageId,
       threadId: threadId || lead.gmailThreadId,
-      sentUrl: getGmailMessageUrl(messageId),
+      sentUrl: isFollowUp
+        ? getGmailThreadUrl(lead.gmailThreadId)
+        : getGmailMessageUrl(messageId),
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Send failed";
