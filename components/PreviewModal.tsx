@@ -9,6 +9,7 @@ export function PreviewModal({
   email,
   loading,
   error,
+  progressMessage,
 }: {
   open: boolean;
   onClose: () => void;
@@ -16,6 +17,7 @@ export function PreviewModal({
   email: EmailContent | null;
   loading: boolean;
   error: string | null;
+  progressMessage?: string | null;
 }) {
   if (!open) return null;
 
@@ -61,7 +63,16 @@ export function PreviewModal({
           </button>
         </div>
 
-        {loading && <p style={{ color: "rgba(255,255,255,0.5)" }}>Generating preview… (may take 1–2 min for Email 1)</p>}
+        {loading && (
+          <div style={{ color: "rgba(255,255,255,0.55)", lineHeight: 1.7 }}>
+            <p style={{ marginBottom: 12, fontWeight: 600, color: "#7B9FFF" }}>
+              {progressMessage || "Starting…"}
+            </p>
+            <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>
+              Email 1 scrapes Meta Ad Library (1–3 min) then calls Claude. This modal updates automatically — keep it open.
+            </p>
+          </div>
+        )}
         {error && (
           <p style={{ color: "#FCA5A5", fontSize: 13, lineHeight: 1.6 }}>{error}</p>
         )}

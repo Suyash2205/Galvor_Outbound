@@ -1,15 +1,31 @@
 const APIFY_ACTOR = "apify~facebook-ads-scraper";
 
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
 export interface ProcessedAd {
   title: string;
   format: string;
   active: boolean;
   ageDays: number;
   platforms: string[];
+}
+
+export interface ApifyRunRef {
+  runId: string;
+  datasetId: string;
+}
+
+const JOB_PREFIX = "APIFY_JOB:";
+
+export function encodeApifyJob(ref: ApifyRunRef): string {
+  return `${JOB_PREFIX}${JSON.stringify(ref)}`;
+}
+
+export function decodeApifyJob(notes: string): ApifyRunRef | null {
+  if (!notes?.startsWith(JOB_PREFIX)) return null;
+  try {
+    return JSON.parse(notes.slice(JOB_PREFIX.length)) as ApifyRunRef;
+  } catch {
+    return null;
+  }
 }
 
 export function processApifyItems(items: Record<string, unknown>[]): ProcessedAd[] {
@@ -51,28 +67,14 @@ export function processApifyItems(items: Record<string, unknown>[]): ProcessedAd
     .filter((x): x is ProcessedAd => x !== null);
 }
 
-async function pollApifyRun(apiKey: string, runId: string) {
-  const timeout = 180_000;
-  const interval = 5_000;
-  const start = Date.now();
-
-  while (Date.now() - start < timeout) {
-    await sleep(interval);
-    const res = await fetch(`https://api.apify.com/v2/actor-runs/${runId}?token=${apiKey}`);
-    if (!res.ok) continue;
-    const { data } = await res.json();
-    if (data.status === "SUCCEEDED") return;
-    if (["FAILED", "ABORTED", "TIMED-OUT"].includes(data.status)) {
-      throw new Error(`Apify run ${data.status.toLowerCase()}. Check your Ad Library URL.`);
-    }
-  }
-  throw new Error("Apify run timed out after 3 minutes.");
-}
-
-export async function runApify(adLibraryUrl: string): Promise<Record<string, unknown>[]> {
+function getApiKey() {
   const apiKey = process.env.APIFY_API_KEY;
   if (!apiKey) throw new Error("APIFY_API_KEY is not configured.");
+  return apiKey;
+}
 
+export async function startApifyRun(adLibraryUrl: string): Promise<ApifyRunRef> {
+  const apiKey = getApiKey();
   const params = new URLSearchParams({ token: apiKey, maxItems: "200" });
   const startRes = await fetch(
     `https://api.apify.com/v2/acts/${APIFY_ACTOR}/runs?${params}`,
@@ -91,14 +93,25 @@ export async function runApify(adLibraryUrl: string): Promise<Record<string, unk
   }
 
   const { data: run } = await startRes.json();
-  const { id: runId, defaultDatasetId } = run;
+  return { runId: run.id, datasetId: run.defaultDatasetId };
+}
 
-  await pollApifyRun(apiKey, runId);
+export async function checkApifyRun(runId: string): Promise<{
+  status: string;
+  datasetId?: string;
+}> {
+  const apiKey = getApiKey();
+  const res = await fetch(`https://api.apify.com/v2/actor-runs/${runId}?token=${apiKey}`);
+  if (!res.ok) throw new Error(`Failed to check Apify run (${res.status})`);
+  const { data } = await res.json();
+  return { status: data.status, datasetId: data.defaultDatasetId };
+}
 
+export async function fetchApifyDataset(datasetId: string): Promise<Record<string, unknown>[]> {
+  const apiKey = getApiKey();
   const dataRes = await fetch(
-    `https://api.apify.com/v2/datasets/${defaultDatasetId}/items?token=${apiKey}&format=json&clean=true`
+    `https://api.apify.com/v2/datasets/${datasetId}/items?token=${apiKey}&format=json&clean=true`
   );
   if (!dataRes.ok) throw new Error(`Failed to fetch Apify results (${dataRes.status})`);
-
   return dataRes.json();
 }

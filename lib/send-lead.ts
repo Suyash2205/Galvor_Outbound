@@ -1,10 +1,4 @@
-import { runApify, processApifyItems } from "./apify";
-import { generateAnalysis } from "./claude";
-import {
-  buildEmail1Content,
-  buildEmail2Content,
-  buildPlaceholderEmail,
-} from "./email/templates";
+import { ensureLeadReady } from "./lead-job";
 import { sendGmailMessage } from "./gmail";
 import {
   fetchAllLeads,
@@ -12,64 +6,13 @@ import {
   stageToSentField,
   updateLeadRow,
 } from "./sheets";
-import { DEFAULT_CLOSING_COPY, type EmailContent, type Lead, type LeadStage } from "./types";
+import type { Lead } from "./types";
 
 async function getLeadByRow(rowIndex: number): Promise<Lead> {
   const leads = await fetchAllLeads();
   const lead = leads.find((l) => l.rowIndex === rowIndex);
   if (!lead) throw new Error(`Lead not found at row ${rowIndex}`);
   return lead;
-}
-
-async function buildEmailForStage(lead: Lead, stage: LeadStage): Promise<EmailContent> {
-  const closing = lead.closingCopy || DEFAULT_CLOSING_COPY;
-  const brandName = lead.companyName;
-  const { firstName, industry, metaAdLibraryUrl } = lead;
-
-  if (stage === "1") {
-    if (!metaAdLibraryUrl) throw new Error("Meta Ad Library URL is required for Email 1.");
-    const items = await runApify(metaAdLibraryUrl);
-    const ads = processApifyItems(items);
-    if (!ads.length) throw new Error("No ads with valid start dates found. Check the Ad Library URL.");
-
-    const analysis = await generateAnalysis(brandName, industry, firstName, ads);
-    await updateLeadRow(lead.rowIndex, { cachedAnalysis: analysis });
-
-    return buildEmail1Content(brandName, firstName, industry, closing, analysis);
-  }
-
-  if (stage === "2") {
-    let analysis = lead.cachedAnalysis;
-    if (!analysis) {
-      if (!metaAdLibraryUrl) throw new Error("No cached analysis and no Ad Library URL for Email 2.");
-      const items = await runApify(metaAdLibraryUrl);
-      const ads = processApifyItems(items);
-      analysis = await generateAnalysis(brandName, industry, firstName, ads);
-      await updateLeadRow(lead.rowIndex, { cachedAnalysis: analysis });
-    }
-    if (!analysis.followUpBody) throw new Error("Follow-up body not generated. Regenerate from Email 1.");
-    return buildEmail2Content(brandName, analysis);
-  }
-
-  const stageNum = parseInt(stage, 10);
-  if (stageNum >= 3 && stageNum <= 6) {
-    return buildPlaceholderEmail(stageNum, brandName, firstName);
-  }
-
-  throw new Error(`Cannot send email for stage: ${stage}`);
-}
-
-export async function previewLeadEmail(rowIndex: number): Promise<{
-  lead: Lead;
-  stage: LeadStage;
-  email: EmailContent;
-}> {
-  const lead = await getLeadByRow(rowIndex);
-  if (lead.stage === "Response Received") {
-    throw new Error("Lead has already responded.");
-  }
-  const email = await buildEmailForStage(lead, lead.stage);
-  return { lead, stage: lead.stage, email };
 }
 
 export async function sendLeadEmail(params: {
@@ -84,17 +27,15 @@ export async function sendLeadEmail(params: {
     throw new Error("Lead has already responded.");
   }
   if (!lead.email) throw new Error("Lead email is missing.");
-  if (lead.status === "generating" || lead.status === "sending") {
-    throw new Error("Lead is already being processed.");
+  if (lead.status === "generating" && !lead.cachedAnalysis) {
+    throw new Error("Email is still generating. Wait for it to finish.");
   }
 
   const currentStage = lead.stage;
-  await updateLeadRow(rowIndex, { status: "generating", errorMessage: "" });
+  await updateLeadRow(rowIndex, { status: "sending", errorMessage: "" });
 
   try {
-    const email = await buildEmailForStage(lead, currentStage);
-
-    await updateLeadRow(rowIndex, { status: "sending" });
+    const { email } = await ensureLeadReady(rowIndex);
 
     const isFollowUp = currentStage !== "1";
     const { messageId, threadId } = await sendGmailMessage({

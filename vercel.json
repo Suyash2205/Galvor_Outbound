@@ -1,4 +1,9 @@
 {
+  "functions": {
+    "app/api/leads/**": {
+      "maxDuration": 60
+    }
+  },
   "crons": [
     {
       "path": "/api/cron/check-replies",

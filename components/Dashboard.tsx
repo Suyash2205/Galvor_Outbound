@@ -1,6 +1,7 @@
 "use client";
 
 import { PreviewModal } from "@/components/PreviewModal";
+import { runLeadJobUntilReady } from "@/lib/job-client";
 import type { EmailContent, Lead, LeadStage } from "@/lib/types";
 import { STAGE_TABS } from "@/lib/types";
 import { signOut, useSession } from "next-auth/react";
@@ -24,6 +25,7 @@ export function Dashboard() {
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewEmail, setPreviewEmail] = useState<EmailContent | null>(null);
   const [previewCompany, setPreviewCompany] = useState("");
+  const [previewProgress, setPreviewProgress] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -109,22 +111,27 @@ export function Dashboard() {
     setPreviewLoading(true);
     setPreviewError(null);
     setPreviewEmail(null);
+    setPreviewProgress("Starting…");
 
     try {
-      const res = await fetch(`/api/leads/${lead.rowIndex}/preview`, { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Preview failed");
-      setPreviewEmail(data.email);
+      const email = await runLeadJobUntilReady(lead.rowIndex, (msg) => {
+        setPreviewProgress(msg);
+      });
+      setPreviewEmail(email);
     } catch (e) {
       setPreviewError(e instanceof Error ? e.message : "Preview failed");
     } finally {
       setPreviewLoading(false);
+      setPreviewProgress(null);
     }
   };
 
   const sendLead = async (rowIndex: number) => {
     setSendingRows((prev) => new Set(prev).add(rowIndex));
     try {
+      await runLeadJobUntilReady(rowIndex, (msg) => {
+        showToast(msg);
+      });
       const res = await fetch(`/api/leads/${rowIndex}/send`, { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Send failed");
@@ -399,6 +406,7 @@ export function Dashboard() {
         email={previewEmail}
         loading={previewLoading}
         error={previewError}
+        progressMessage={previewProgress}
       />
 
       {toast && (
