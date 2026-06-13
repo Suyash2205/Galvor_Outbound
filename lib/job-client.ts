@@ -1,12 +1,8 @@
 import type { EmailContent } from "./types";
 import type { JobPhase } from "./lead-job";
+import { SendCancelledError } from "./send-cancelled";
 
-export class SendCancelledError extends Error {
-  constructor(message = "Send cancelled") {
-    super(message);
-    this.name = "SendCancelledError";
-  }
-}
+export { SendCancelledError };
 
 export interface JobPollResult {
   phase: JobPhase;

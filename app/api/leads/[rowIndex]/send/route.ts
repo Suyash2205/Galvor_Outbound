@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { sendLeadEmail } from "@/lib/send-lead";
+import { isSendCancelledError } from "@/lib/send-cancelled";
 
 export const maxDuration = 300;
 
@@ -20,6 +21,9 @@ export async function POST(
 
     return NextResponse.json(result);
   } catch (err) {
+    if (isSendCancelledError(err)) {
+      return NextResponse.json({ error: "Send cancelled", cancelled: true }, { status: 409 });
+    }
     const message = err instanceof Error ? err.message : "Send failed";
     const status = message === "Unauthorized" ? 401 : 500;
     return NextResponse.json({ error: message }, { status });

@@ -329,6 +329,7 @@ export function Dashboard() {
     });
     setLeadProgress(rowIndex, "Cancelled", "cancelled", "error");
     clearLeadProgress(rowIndex, 4000);
+    fetchLeads(true);
   };
 
   const closePreview = () => {
@@ -387,6 +388,16 @@ export function Dashboard() {
   const executeSend = async (rowIndex: number) => {
     const cancelToken: SendCancelToken = { cancelled: false, abort: new AbortController() };
     sendCancelRefs.current.set(rowIndex, cancelToken);
+    let sendLocked = false;
+
+    const releaseSendLock = async () => {
+      if (!sendLocked) return;
+      sendLocked = false;
+      await fetch(`/api/leads/${rowIndex}/unlock`, { method: "POST" });
+    };
+
+    const isAbortError = (e: unknown) =>
+      e instanceof DOMException && e.name === "AbortError";
 
     setSendingRows((prev) => new Set(prev).add(rowIndex));
     clearLeadProgress(rowIndex);
@@ -399,6 +410,18 @@ export function Dashboard() {
     };
 
     try {
+      const lockRes = await fetch(`/api/leads/${rowIndex}/lock-send`, {
+        method: "POST",
+        signal: cancelToken.abort?.signal,
+      });
+      const lockData = await lockRes.json();
+      if (!lockRes.ok) {
+        throw new Error(lockData.error || "Could not start send");
+      }
+      sendLocked = true;
+
+      if (shouldCancel()) throw new SendCancelledError();
+
       await runLeadJobUntilReady(
         rowIndex,
         (msg, phase) => {
@@ -425,8 +448,12 @@ export function Dashboard() {
         signal: cancelToken.abort?.signal,
       });
       const data = await res.json();
+      if (res.status === 409 && data.cancelled) {
+        throw new SendCancelledError();
+      }
       if (!res.ok) throw new Error(data.error || "Send failed");
 
+      sendLocked = false;
       setLeadProgress(rowIndex, "Completed", "completed", "completed");
       clearLeadProgress(rowIndex, 4000);
       return {
@@ -435,11 +462,20 @@ export function Dashboard() {
         sentUrl: data.sentUrl as string | undefined,
       };
     } catch (e) {
-      if (e instanceof SendCancelledError || cancelToken.cancelled) {
+      const cancelled =
+        e instanceof SendCancelledError || cancelToken.cancelled || isAbortError(e);
+
+      if (cancelled) {
+        await releaseSendLock();
         setLeadProgress(rowIndex, "Cancelled", "cancelled", "error");
         clearLeadProgress(rowIndex, 4000);
         return { ok: false as const, rowIndex, message: "Cancelled", cancelled: true as const };
       }
+
+      if (sendLocked) {
+        await releaseSendLock();
+      }
+
       const message = e instanceof Error ? e.message : "Send failed";
       setRowProgress((prev) => ({
         ...prev,

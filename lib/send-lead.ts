@@ -8,6 +8,7 @@ import {
   resolveFollowUpHeaders,
   sendGmailMessage,
 } from "./gmail";
+import { SendCancelledError } from "./send-cancelled";
 import {
   fetchLeadByRow,
   nextStage,
@@ -30,6 +31,15 @@ function validateEmailContent(stage: string, plainBody: string, htmlBody: string
   }
 }
 
+async function assertSendStillActive(rowIndex: number): Promise<Lead> {
+  const lead = await fetchLeadByRow(rowIndex, { fresh: true });
+  if (!lead) throw new Error(`Lead not found at row ${rowIndex}`);
+  if (lead.status !== "sending") {
+    throw new SendCancelledError();
+  }
+  return lead;
+}
+
 export async function sendLeadEmail(params: {
   rowIndex: number;
   accessToken: string;
@@ -41,21 +51,22 @@ export async function sendLeadEmail(params: {
   sentUrl: string;
 }> {
   const { rowIndex, accessToken, senderEmail } = params;
-  const lead = await fetchLeadByRow(rowIndex, { fresh: true });
+  let lead = await fetchLeadByRow(rowIndex, { fresh: true });
   if (!lead) throw new Error(`Lead not found at row ${rowIndex}`);
+
+  if (lead.status !== "sending") {
+    throw new SendCancelledError();
+  }
 
   if (lead.stage === "Response Received") {
     throw new Error("Lead has already responded.");
   }
   if (!lead.email) throw new Error("Lead email is missing.");
-  if (lead.status === "generating" && !lead.cachedAnalysis) {
-    throw new Error("Email is still generating. Wait for it to finish.");
-  }
 
   const currentStage = lead.stage;
-  await updateLeadRow(rowIndex, { status: "sending", errorMessage: "" }, lead);
 
   try {
+    await assertSendStillActive(rowIndex);
     const { email } = await ensureLeadReady(rowIndex);
     validateEmailContent(currentStage, email.plainBody, email.htmlBody);
 
@@ -117,6 +128,8 @@ export async function sendLeadEmail(params: {
       }
     }
 
+    lead = await assertSendStillActive(rowIndex);
+
     const signature = await getGmailSignature(accessToken, senderEmail);
     if (signature) {
       const withSignature = appendSignature(plainBody, htmlBody, signature);
@@ -129,6 +142,8 @@ export async function sendLeadEmail(params: {
       plainBody = quoted.plainBody;
       htmlBody = quoted.htmlBody;
     }
+
+    await assertSendStillActive(rowIndex);
 
     const { messageId, threadId } = await sendGmailMessage({
       accessToken,
@@ -173,6 +188,9 @@ export async function sendLeadEmail(params: {
         : getGmailMessageUrl(messageId),
     };
   } catch (err) {
+    if (err instanceof SendCancelledError) {
+      throw err;
+    }
     const message = err instanceof Error ? err.message : "Send failed";
     await updateLeadRow(rowIndex, { status: "error", errorMessage: message }, lead);
     throw err;
