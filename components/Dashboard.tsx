@@ -1,5 +1,6 @@
 "use client";
 
+import { GalvorBrand } from "@/components/GalvorBrand";
 import { LeadSendProgress, type RowSendState } from "@/components/LeadSendProgress";
 import { PreviewModal } from "@/components/PreviewModal";
 import { phaseToProgress, runLeadJobUntilReady } from "@/lib/job-client";
@@ -305,8 +306,8 @@ export function Dashboard() {
   return (
     <>
       <header className="app-header">
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span className="brand-name">Galvor</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <GalvorBrand />
           <span className="brand-badge">Outbound Pipeline</span>
         </div>
         <div className="header-actions">
