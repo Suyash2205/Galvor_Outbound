@@ -304,164 +304,93 @@ export function Dashboard() {
 
   return (
     <>
-      <header
-        style={{
-          background: "rgba(7,9,26,0.96)",
-          borderBottom: "1px solid rgba(255,255,255,0.08)",
-          padding: "0 32px",
-          height: 58,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          position: "sticky",
-          top: 0,
-          zIndex: 100,
-        }}
-      >
+      <header className="app-header">
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>Galvor</span>
-          <span
-            style={{
-              background: "rgba(43,78,255,0.15)",
-              border: "1px solid rgba(43,78,255,0.3)",
-              color: "#7B9FFF",
-              fontSize: 11,
-              padding: "3px 10px",
-              borderRadius: 20,
-            }}
-          >
-            Outbound Pipeline
-          </span>
+          <span className="brand-name">Galvor</span>
+          <span className="brand-badge">Outbound Pipeline</span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <button
-            onClick={() => fetchLeads(true)}
-            style={btnGhost}
-          >
+        <div className="header-actions">
+          <button className="btn btn--ghost" onClick={() => fetchLeads(true)}>
             Sync
           </button>
-          <button onClick={checkReplies} style={btnGhost}>
+          <button className="btn btn--ghost" onClick={checkReplies}>
             Check Replies
           </button>
-          <button onClick={initSheet} style={btnGhost}>
+          <button className="btn btn--ghost" onClick={initSheet}>
             Init Sheet Tab
           </button>
           <a
             href={`https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/edit`}
             target="_blank"
             rel="noreferrer"
-            style={{ ...btnGhost, display: "inline-flex", alignItems: "center" }}
+            className="btn btn--ghost"
           >
             Open Sheet
           </a>
-          <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>{session?.user?.email}</span>
-          <button onClick={() => signOut({ callbackUrl: "/login" })} style={btnGhost}>
+          <span className="header-email">{session?.user?.email}</span>
+          <button className="btn btn--ghost" onClick={() => signOut({ callbackUrl: "/login" })}>
             Sign out
           </button>
         </div>
       </header>
 
-      <main style={{ maxWidth: 1280, margin: "0 auto", padding: "28px 32px 60px" }}>
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            marginBottom: 24,
-            flexWrap: "wrap",
-            borderBottom: "1px solid rgba(255,255,255,0.07)",
-            paddingBottom: 16,
-          }}
-        >
+      <main className="app-main">
+        <div className="stage-tabs">
           {STAGE_TABS.map((tab) => (
             <button
               key={tab.id}
+              className={`tab-btn${activeStage === tab.id ? " tab-btn--active" : ""}`}
               onClick={() => {
                 setActiveStage(tab.id);
                 setSelected(new Set());
               }}
-              style={{
-                ...tabBtn,
-                ...(activeStage === tab.id ? tabBtnActive : {}),
-              }}
             >
               {tab.label}
-              <span style={{ marginLeft: 6, opacity: 0.6 }}>({stageCounts[tab.id] || 0})</span>
+              <span className="tab-count">({stageCounts[tab.id] || 0})</span>
             </button>
           ))}
         </div>
 
         {canSend && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              marginBottom: 20,
-              flexWrap: "wrap",
-            }}
-          >
-            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "rgba(255,255,255,0.5)" }}>
-              <input type="checkbox" onChange={toggleSelectAll} checked={selected.size > 0 && selected.size === stageLeads.length} />
+          <div className="toolbar">
+            <label className="toolbar-label">
+              <input
+                type="checkbox"
+                onChange={toggleSelectAll}
+                checked={selected.size > 0 && selected.size === stageLeads.length}
+              />
               Select all
             </label>
             <button
+              className="btn btn--primary"
               onClick={sendSelected}
               disabled={!selected.size || !!bulkProgress}
-              style={btnPrimary}
             >
-              Send Selected ({selected.size}) — parallel
+              Send Selected ({selected.size})
             </button>
-            <button onClick={sendAll} disabled={!stageLeads.length || !!bulkProgress} style={btnSecondary}>
-              Send All Ready — parallel
+            <button
+              className="btn btn--secondary"
+              onClick={sendAll}
+              disabled={!stageLeads.length || !!bulkProgress}
+            >
+              Send All Ready
             </button>
-            {bulkProgress && (
-              <span style={{ fontSize: 12, color: "#7B9FFF" }}>
-                Bulk send: {bulkProgress} (all running in parallel)
-              </span>
-            )}
+            {bulkProgress && <span className="bulk-status">Bulk send: {bulkProgress}</span>}
           </div>
         )}
 
-        {loading && <p style={{ color: "rgba(255,255,255,0.4)" }}>Loading leads…</p>}
-        {actionMessage && (
-          <div
-            style={{
-              background: "rgba(43,78,255,0.08)",
-              border: "1px solid rgba(43,78,255,0.2)",
-              borderRadius: 10,
-              padding: 12,
-              color: "#7B9FFF",
-              fontSize: 13,
-              marginBottom: 16,
-            }}
-          >
-            {actionMessage}
-          </div>
-        )}
-
-        {error && (
-          <div
-            style={{
-              background: "rgba(239,68,68,0.08)",
-              border: "1px solid rgba(239,68,68,0.2)",
-              borderRadius: 10,
-              padding: 14,
-              color: "#FCA5A5",
-              fontSize: 13,
-              marginBottom: 20,
-            }}
-          >
-            {error}
-          </div>
-        )}
+        {loading && <p className="loading-text">Loading leads…</p>}
+        {actionMessage && <div className="alert alert--info">{actionMessage}</div>}
+        {error && <div className="alert alert--error">{error}</div>}
 
         {!loading && stageLeads.length === 0 && (
-          <div style={{ textAlign: "center", padding: 60, color: "rgba(255,255,255,0.25)" }}>
-            No leads in this section. Add rows to the <strong>Outbound Pipeline</strong> tab in Google Sheets.
+          <div className="empty-state">
+            No leads in this section. Add rows to the <strong>Outbound Pipeline</strong> tab in Google
+            Sheets.
           </div>
         )}
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div className="lead-list">
           {stageLeads.map((lead) => {
             const isSending = sendingRows.has(lead.rowIndex);
             const isPreviewing = previewingRows.has(lead.rowIndex);
@@ -473,16 +402,7 @@ export function Dashboard() {
             return (
               <div
                 key={lead.rowIndex}
-                style={{
-                  background: "rgba(255,255,255,0.025)",
-                  border: `1px solid ${progress?.status === "completed" ? "rgba(16,185,129,0.25)" : "rgba(255,255,255,0.08)"}`,
-                  borderRadius: 12,
-                  padding: "16px 18px",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 14,
-                  flexWrap: "wrap",
-                }}
+                className={`lead-card${progress?.status === "completed" ? " lead-card--completed" : ""}`}
               >
                 {canSend && (
                   <input
@@ -496,34 +416,38 @@ export function Dashboard() {
                 {progress && <LeadSendProgress state={progress} />}
 
                 <div style={{ flex: 1, minWidth: 200 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: "#fff" }}>{lead.companyName || "—"}</div>
-                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", marginTop: 3 }}>
+                  <div className="lead-name">{lead.companyName || "—"}</div>
+                  <div className="lead-meta">
                     {lead.firstName} {lead.lastName} · {lead.email}
                   </div>
-                  {lead.industry && (
-                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>{lead.industry}</div>
-                  )}
+                  {lead.industry && <div className="lead-industry">{lead.industry}</div>}
                 </div>
 
                 <StatusBadge status={displayStatus} />
 
-                {lead.errorMessage && (
-                  <span style={{ fontSize: 11, color: "#FCA5A5", maxWidth: 200 }}>{lead.errorMessage}</span>
-                )}
+                {lead.errorMessage && <span className="lead-error">{lead.errorMessage}</span>}
 
                 {lead.respondedAt && isResponseTab && (
-                  <span style={{ fontSize: 11, color: "#10B981" }}>
+                  <span className="lead-responded">
                     Responded {new Date(lead.respondedAt).toLocaleDateString()}
                   </span>
                 )}
 
-                <div style={{ display: "flex", gap: 8 }}>
+                <div className="lead-actions">
                   {canSend && (
                     <>
-                      <button onClick={() => previewLead(lead)} disabled={isBusy} style={btnSecondary}>
+                      <button
+                        className="btn btn--secondary"
+                        onClick={() => previewLead(lead)}
+                        disabled={isBusy}
+                      >
                         Preview
                       </button>
-                      <button onClick={() => sendLead(lead.rowIndex)} disabled={isBusy} style={btnPrimary}>
+                      <button
+                        className="btn btn--primary"
+                        onClick={() => sendLead(lead.rowIndex)}
+                        disabled={isBusy}
+                      >
                         {isSending ? "…" : "Send"}
                       </button>
                     </>
@@ -533,7 +457,7 @@ export function Dashboard() {
                       href={`https://mail.google.com/mail/u/0/#inbox/${lead.gmailThreadId}`}
                       target="_blank"
                       rel="noreferrer"
-                      style={{ ...btnGhost, display: "inline-flex", alignItems: "center" }}
+                      className="btn btn--ghost"
                     >
                       Thread
                     </a>
@@ -542,7 +466,7 @@ export function Dashboard() {
                     href={`https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/edit#gid=0&range=A${lead.rowIndex}`}
                     target="_blank"
                     rel="noreferrer"
-                    style={{ ...btnGhost, display: "inline-flex", alignItems: "center" }}
+                    className="btn btn--ghost"
                   >
                     Sheet
                   </a>
@@ -562,79 +486,13 @@ export function Dashboard() {
         error={previewError}
         progressMessage={previewProgress}
       />
-
     </>
   );
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const colors: Record<string, { bg: string; color: string }> = {
-    ready: { bg: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.5)" },
-    generating: { bg: "rgba(43,78,255,0.12)", color: "#7B9FFF" },
-    sending: { bg: "rgba(43,78,255,0.12)", color: "#7B9FFF" },
-    sent: { bg: "rgba(16,185,129,0.1)", color: "#10B981" },
-    error: { bg: "rgba(239,68,68,0.1)", color: "#EF4444" },
-    responded: { bg: "rgba(16,185,129,0.1)", color: "#10B981" },
-  };
-  const c = colors[status] || colors.ready;
-  return (
-    <span
-      style={{
-        fontSize: 11,
-        fontWeight: 500,
-        padding: "4px 10px",
-        borderRadius: 20,
-        background: c.bg,
-        color: c.color,
-        textTransform: "capitalize",
-      }}
-    >
-      {status}
-    </span>
-  );
+  const key = ["ready", "generating", "sending", "sent", "error", "responded"].includes(status)
+    ? status
+    : "ready";
+  return <span className={`status-badge status-badge--${key}`}>{status}</span>;
 }
-
-const btnPrimary: React.CSSProperties = {
-  background: "#2B4EFF",
-  color: "#fff",
-  border: "none",
-  borderRadius: 8,
-  padding: "8px 16px",
-  fontSize: 12,
-  fontWeight: 600,
-};
-
-const btnSecondary: React.CSSProperties = {
-  background: "rgba(255,255,255,0.04)",
-  color: "rgba(255,255,255,0.7)",
-  border: "1px solid rgba(255,255,255,0.1)",
-  borderRadius: 8,
-  padding: "8px 16px",
-  fontSize: 12,
-  fontWeight: 500,
-};
-
-const btnGhost: React.CSSProperties = {
-  background: "none",
-  border: "1px solid rgba(255,255,255,0.1)",
-  color: "rgba(255,255,255,0.55)",
-  borderRadius: 8,
-  padding: "6px 12px",
-  fontSize: 12,
-};
-
-const tabBtn: React.CSSProperties = {
-  background: "none",
-  border: "1px solid rgba(255,255,255,0.1)",
-  color: "rgba(255,255,255,0.45)",
-  borderRadius: 8,
-  padding: "8px 14px",
-  fontSize: 12,
-  fontWeight: 500,
-};
-
-const tabBtnActive: React.CSSProperties = {
-  background: "rgba(43,78,255,0.12)",
-  borderColor: "rgba(43,78,255,0.4)",
-  color: "#7B9FFF",
-};

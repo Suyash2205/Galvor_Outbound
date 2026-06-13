@@ -22,66 +22,34 @@ export function PreviewModal({
   if (!open) return null;
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.7)",
-        zIndex: 300,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 24,
-      }}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          background: "#12142a",
-          border: "1px solid rgba(255,255,255,0.1)",
-          borderRadius: 16,
-          maxWidth: 720,
-          width: "100%",
-          maxHeight: "85vh",
-          overflow: "auto",
-          padding: 28,
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 20 }}>
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal__header">
           <div>
-            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-              Preview
-            </div>
-            <div style={{ fontSize: 16, fontWeight: 600, color: "#fff", marginTop: 4 }}>{companyName}</div>
+            <div className="modal__eyebrow">Preview</div>
+            <div className="modal__title">{companyName}</div>
           </div>
-          <button
-            onClick={onClose}
-            style={{ background: "none", border: "none", color: "rgba(255,255,255,0.5)", fontSize: 20 }}
-          >
+          <button className="modal__close" onClick={onClose} aria-label="Close">
             ×
           </button>
         </div>
 
         {loading && (
-          <div style={{ color: "rgba(255,255,255,0.55)", lineHeight: 1.7 }}>
-            <p style={{ marginBottom: 12, fontWeight: 600, color: "#7B9FFF" }}>
-              {progressMessage || "Starting…"}
-            </p>
-            <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>
-              Email 1 scrapes Meta Ad Library (1–3 min) then calls Claude. This modal updates automatically — keep it open.
+          <div style={{ lineHeight: 1.7 }}>
+            <p className="modal__loading-title">{progressMessage || "Starting…"}</p>
+            <p className="modal__loading-hint">
+              Email 1 scrapes Meta Ad Library (1–3 min) then calls Claude. This modal updates
+              automatically — keep it open.
             </p>
           </div>
         )}
-        {error && (
-          <p style={{ color: "#FCA5A5", fontSize: 13, lineHeight: 1.6 }}>{error}</p>
-        )}
+        {error && <p className="modal__error">{error}</p>}
         {email && !loading && (
           <>
-            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 6 }}>SUBJECT</div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "#fff", marginBottom: 20 }}>{email.subject}</div>
+            <div className="modal__subject-label">Subject</div>
+            <div className="modal__subject">{email.subject}</div>
             <div
-              style={{ background: "#fff", borderRadius: 8, padding: 20, color: "#1a1a1a" }}
+              className="modal__email-preview"
               dangerouslySetInnerHTML={{ __html: email.htmlBody }}
             />
           </>
