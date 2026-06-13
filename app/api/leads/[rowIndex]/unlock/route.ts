@@ -17,11 +17,7 @@ export async function POST(
       return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     }
 
-    if (lead.status === "sending") {
-      return NextResponse.json({ error: "Cannot unlock while sending" }, { status: 409 });
-    }
-
-    if (lead.status === "generating") {
+    if (lead.status === "generating" || lead.status === "sending") {
       await updateLeadRow(idx, { status: "ready", errorMessage: "" }, lead);
     }
 

@@ -1,13 +1,20 @@
 import type { EmailContent } from "./types";
 import type { JobPhase } from "./lead-job";
 
+export class SendCancelledError extends Error {
+  constructor(message = "Send cancelled") {
+    super(message);
+    this.name = "SendCancelledError";
+  }
+}
+
 export interface JobPollResult {
   phase: JobPhase;
   message: string;
   email?: EmailContent;
 }
 
-export function phaseToProgress(phase: JobPhase | "sending" | "completed"): number {
+export function phaseToProgress(phase: JobPhase | "sending" | "cancelled" | "completed"): number {
   switch (phase) {
     case "scraping":
       return 30;
@@ -19,6 +26,8 @@ export function phaseToProgress(phase: JobPhase | "sending" | "completed"): numb
       return 90;
     case "completed":
       return 100;
+    case "cancelled":
+      return 100;
     case "ready":
       return 100;
     default:
@@ -28,11 +37,16 @@ export function phaseToProgress(phase: JobPhase | "sending" | "completed"): numb
 
 export async function runLeadJobUntilReady(
   rowIndex: number,
-  onProgress?: (message: string, phase: JobPhase) => void
+  onProgress?: (message: string, phase: JobPhase) => void,
+  options?: { shouldCancel?: () => boolean }
 ): Promise<EmailContent> {
+  const shouldCancel = options?.shouldCancel;
+
   const startRes = await fetch(`/api/leads/${rowIndex}/job`, { method: "POST" });
   const startData = await startRes.json();
   if (!startRes.ok) throw new Error(startData.error || "Failed to start job");
+
+  if (shouldCancel?.()) throw new SendCancelledError();
 
   if (startData.phase === "ready" && startData.email) {
     return startData.email;
@@ -40,12 +54,15 @@ export async function runLeadJobUntilReady(
 
   onProgress?.(startData.message || "Working…", startData.phase);
 
-  const maxAttempts = 50; // ~7 min at 8s intervals
+  const maxAttempts = 50;
   for (let i = 0; i < maxAttempts; i++) {
-    await sleep(8000);
+    await sleep(8000, shouldCancel);
+
     const pollRes = await fetch(`/api/leads/${rowIndex}/job`);
     const pollData = await pollRes.json();
     if (!pollRes.ok) throw new Error(pollData.error || "Job poll failed");
+
+    if (shouldCancel?.()) throw new SendCancelledError();
 
     onProgress?.(pollData.message || "Working…", pollData.phase);
 
@@ -60,6 +77,10 @@ export async function runLeadJobUntilReady(
   throw new Error("Timed out after 6 minutes. Try again or check the Ad Library URL.");
 }
 
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
+async function sleep(ms: number, shouldCancel?: () => boolean) {
+  const step = 400;
+  for (let elapsed = 0; elapsed < ms; elapsed += step) {
+    if (shouldCancel?.()) throw new SendCancelledError();
+    await new Promise((r) => setTimeout(r, Math.min(step, ms - elapsed)));
+  }
 }

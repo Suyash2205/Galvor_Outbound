@@ -2,11 +2,22 @@ import { NextResponse } from "next/server";
 import { google } from "googleapis";
 import { checkRepliesForAllLeads } from "@/lib/replies";
 
-export async function GET(req: Request) {
-  const authHeader = req.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
+function isAuthorizedCronRequest(req: Request): boolean {
+  const cronSecret = process.env.CRON_SECRET?.trim();
+  if (!cronSecret) return true;
 
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  const authHeader = req.headers.get("authorization")?.trim() || "";
+  const expected = `Bearer ${cronSecret}`;
+  if (authHeader === expected) return true;
+
+  // Allow secret without "Bearer " prefix (some schedulers send raw value)
+  if (authHeader === cronSecret) return true;
+
+  return false;
+}
+
+export async function GET(req: Request) {
+  if (!isAuthorizedCronRequest(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

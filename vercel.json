@@ -2,6 +2,12 @@
   "functions": {
     "app/api/leads/**": {
       "maxDuration": 60
+    },
+    "app/api/cron/check-replies": {
+      "maxDuration": 60
+    },
+    "app/api/replies/check": {
+      "maxDuration": 60
     }
   },
   "crons": [

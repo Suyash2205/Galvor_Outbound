@@ -3,7 +3,8 @@
 import { GalvorBrand } from "@/components/GalvorBrand";
 import { LeadSendProgress, type RowSendState } from "@/components/LeadSendProgress";
 import { PreviewModal } from "@/components/PreviewModal";
-import { phaseToProgress, runLeadJobUntilReady } from "@/lib/job-client";
+import { ReplyAlert } from "@/components/ReplyAlert";
+import { phaseToProgress, runLeadJobUntilReady, SendCancelledError } from "@/lib/job-client";
 import type { JobPhase } from "@/lib/lead-job";
 import type { EmailContent, Lead, LeadStage } from "@/lib/types";
 import { STAGE_TABS } from "@/lib/types";
@@ -11,6 +12,18 @@ import { signOut, useSession } from "next-auth/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const SPREADSHEET_ID = "1-nZCTRbeZCLgUPA91k37QlFHbL99sIKIdIUSB9tbmdc";
+const IDLE_BEFORE_REPLY_CHECK_MS = 2 * 60 * 1000;
+const ACTIVE_REPLY_POLL_MS = 30 * 1000;
+
+interface SendCancelToken {
+  cancelled: boolean;
+  abort?: AbortController;
+}
+
+interface MovedLeadInfo {
+  rowIndex: number;
+  companyName: string;
+}
 
 export function Dashboard() {
   const { data: session } = useSession();
@@ -34,13 +47,22 @@ export function Dashboard() {
   const [previewRowIndex, setPreviewRowIndex] = useState<number | null>(null);
   const [previewingRows, setPreviewingRows] = useState<Set<number>>(new Set());
   const previewCancelledRef = useRef(false);
+  const [replyAlert, setReplyAlert] = useState<MovedLeadInfo[] | null>(null);
+  const replyCheckInFlight = useRef(false);
+  const hiddenAtRef = useRef<number | null>(null);
+  const sendCancelRefs = useRef<Map<number, SendCancelToken>>(new Map());
+  const leadsRef = useRef<Lead[]>([]);
+
+  useEffect(() => {
+    leadsRef.current = leads;
+  }, [leads]);
 
   const showActionMessage = (msg: string) => {
     setActionMessage(msg);
     setTimeout(() => setActionMessage(null), 3000);
   };
 
-  const setLeadProgress = (rowIndex: number, message: string, phase: JobPhase | "sending" | "completed", status: RowSendState["status"] = "active") => {
+  const setLeadProgress = (rowIndex: number, message: string, phase: JobPhase | "sending" | "cancelled" | "completed", status: RowSendState["status"] = "active") => {
     setRowProgress((prev) => ({
       ...prev,
       [rowIndex]: {
@@ -85,11 +107,128 @@ export function Dashboard() {
     }
   }, []);
 
+  const applyReplyResults = useCallback(
+    (movedRows: number[], movedLeads: MovedLeadInfo[]) => {
+      if (!movedRows.length) return;
+
+      for (const rowIndex of movedRows) {
+        const token = sendCancelRefs.current.get(rowIndex);
+        if (token) {
+          token.cancelled = true;
+          token.abort?.abort();
+        }
+      }
+
+      setLeads((prev) =>
+        prev.map((lead) =>
+          movedRows.includes(lead.rowIndex)
+            ? {
+                ...lead,
+                stage: "Response Received" as const,
+                status: "responded" as const,
+                respondedAt: lead.respondedAt || new Date().toISOString(),
+                errorMessage: "",
+              }
+            : lead
+        )
+      );
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (const rowIndex of movedRows) next.delete(rowIndex);
+        return next;
+      });
+      setReplyAlert(movedLeads);
+    },
+    []
+  );
+
+  const runReplyCheck = useCallback(
+    async (options?: { silent?: boolean; manual?: boolean }) => {
+      if (replyCheckInFlight.current) return null;
+      replyCheckInFlight.current = true;
+      try {
+        const res = await fetch("/api/replies/check", { method: "POST" });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Reply check failed");
+
+        const moved = (data.moved as number) || 0;
+        const movedRows = (data.movedRows as number[]) || [];
+        const movedLeads = (data.movedLeads as MovedLeadInfo[]) || [];
+
+        if (movedRows.length) {
+          applyReplyResults(movedRows, movedLeads);
+        }
+
+        await fetchLeads(true);
+
+        if (moved > 0) {
+          if (options?.manual) {
+            setActiveStage("Response Received");
+            setReplyAlert(null);
+            showActionMessage(
+              `${moved} lead${moved === 1 ? "" : "s"} moved to Responses`
+            );
+          }
+        } else if (!options?.silent) {
+          showActionMessage(`Checked ${data.checked} threads — no new replies`);
+        }
+
+        return data;
+      } catch (e) {
+        if (!options?.silent) {
+          setError(e instanceof Error ? e.message : "Reply check failed");
+        }
+        return null;
+      } finally {
+        replyCheckInFlight.current = false;
+      }
+    },
+    [applyReplyResults, fetchLeads]
+  );
+
   useEffect(() => {
-    fetchLeads(true);
-    const interval = setInterval(() => fetchLeads(false), 180_000);
+    fetchLeads(true).then(() => {
+      runReplyCheck({ silent: true });
+    });
+    const syncInterval = setInterval(() => fetchLeads(false), 180_000);
+    return () => clearInterval(syncInterval);
+  }, [fetchLeads, runReplyCheck]);
+
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        hiddenAtRef.current = Date.now();
+        return;
+      }
+
+      const hiddenMs = hiddenAtRef.current ? Date.now() - hiddenAtRef.current : 0;
+      hiddenAtRef.current = null;
+      if (hiddenMs >= IDLE_BEFORE_REPLY_CHECK_MS) {
+        runReplyCheck({ silent: true });
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [runReplyCheck]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        runReplyCheck({ silent: true });
+      }
+    }, ACTIVE_REPLY_POLL_MS);
     return () => clearInterval(interval);
-  }, [fetchLeads]);
+  }, [runReplyCheck]);
+
+  const viewReplyAlert = () => {
+    setActiveStage("Response Received");
+    setSelected(new Set());
+    setReplyAlert(null);
+    fetchLeads(true);
+  };
+
+  const checkReplies = () => runReplyCheck({ manual: true });
 
   const stageLeads = useMemo(
     () => leads.filter((l) => l.stage === activeStage),
@@ -135,15 +274,20 @@ export function Dashboard() {
     fetchLeads();
   };
 
-  const checkReplies = async () => {
-    const res = await fetch("/api/replies/check", { method: "POST" });
-    const data = await res.json();
-    if (!res.ok) {
-      setError(data.error || "Reply check failed");
-      return;
+  const cancelSend = async (rowIndex: number) => {
+    const token = sendCancelRefs.current.get(rowIndex);
+    if (token) {
+      token.cancelled = true;
+      token.abort?.abort();
     }
-    showActionMessage(`Checked ${data.checked} threads — ${data.moved} moved to Responses`);
-    fetchLeads();
+    await fetch(`/api/leads/${rowIndex}/unlock`, { method: "POST" });
+    setSendingRows((prev) => {
+      const next = new Set(prev);
+      next.delete(rowIndex);
+      return next;
+    });
+    setLeadProgress(rowIndex, "Cancelled", "cancelled", "error");
+    clearLeadProgress(rowIndex, 4000);
   };
 
   const closePreview = () => {
@@ -200,18 +344,45 @@ export function Dashboard() {
   };
 
   const executeSend = async (rowIndex: number) => {
+    const cancelToken: SendCancelToken = { cancelled: false, abort: new AbortController() };
+    sendCancelRefs.current.set(rowIndex, cancelToken);
+
     setSendingRows((prev) => new Set(prev).add(rowIndex));
     clearLeadProgress(rowIndex);
     setLeadProgress(rowIndex, "Starting…", "scraping");
 
+    const shouldCancel = () => {
+      if (cancelToken.cancelled) return true;
+      const lead = leadsRef.current.find((l) => l.rowIndex === rowIndex);
+      return lead?.stage === "Response Received";
+    };
+
     try {
-      await runLeadJobUntilReady(rowIndex, (msg, phase) => {
-        setLeadProgress(rowIndex, msg, phase);
-      });
+      await runLeadJobUntilReady(
+        rowIndex,
+        (msg, phase) => {
+          if (!shouldCancel()) setLeadProgress(rowIndex, msg, phase);
+        },
+        { shouldCancel }
+      );
+
+      if (shouldCancel()) throw new SendCancelledError("Send stopped — lead replied");
+
+      const freshRes = await fetch("/api/leads?fresh=1", { signal: cancelToken.abort?.signal });
+      const freshData = await freshRes.json();
+      const freshLead = (freshData.leads as Lead[] | undefined)?.find((l) => l.rowIndex === rowIndex);
+      if (freshLead?.stage === "Response Received") {
+        throw new SendCancelledError("Send stopped — lead replied");
+      }
+
+      if (shouldCancel()) throw new SendCancelledError();
 
       setLeadProgress(rowIndex, "Sending email…", "sending");
 
-      const res = await fetch(`/api/leads/${rowIndex}/send`, { method: "POST" });
+      const res = await fetch(`/api/leads/${rowIndex}/send`, {
+        method: "POST",
+        signal: cancelToken.abort?.signal,
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Send failed");
 
@@ -223,6 +394,11 @@ export function Dashboard() {
         sentUrl: data.sentUrl as string | undefined,
       };
     } catch (e) {
+      if (e instanceof SendCancelledError || cancelToken.cancelled) {
+        setLeadProgress(rowIndex, "Cancelled", "cancelled", "error");
+        clearLeadProgress(rowIndex, 4000);
+        return { ok: false as const, rowIndex, message: "Cancelled", cancelled: true as const };
+      }
       const message = e instanceof Error ? e.message : "Send failed";
       setRowProgress((prev) => ({
         ...prev,
@@ -231,6 +407,7 @@ export function Dashboard() {
       clearLeadProgress(rowIndex, 6000);
       return { ok: false as const, rowIndex, message };
     } finally {
+      sendCancelRefs.current.delete(rowIndex);
       setSendingRows((prev) => {
         const next = new Set(prev);
         next.delete(rowIndex);
@@ -248,9 +425,15 @@ export function Dashboard() {
   };
 
   const sendBulk = async (rowIndexes: number[]) => {
-    if (!rowIndexes.length) return;
-
-    const unique = [...new Set(rowIndexes)];
+    const unique = [
+      ...new Set(
+        rowIndexes.filter((rowIndex) => {
+          const lead = leadsRef.current.find((l) => l.rowIndex === rowIndex);
+          return lead?.stage !== "Response Received";
+        })
+      ),
+    ];
+    if (!unique.length) return;
     setBulkProgress(`0 / ${unique.length} in progress`);
 
     setSendingRows((prev) => new Set([...prev, ...unique]));
@@ -381,6 +564,13 @@ export function Dashboard() {
         )}
 
         {loading && <p className="loading-text">Loading leads…</p>}
+        {replyAlert && replyAlert.length > 0 && (
+          <ReplyAlert
+            movedLeads={replyAlert}
+            onView={viewReplyAlert}
+            onDismiss={() => setReplyAlert(null)}
+          />
+        )}
         {actionMessage && <div className="alert alert--info">{actionMessage}</div>}
         {error && <div className="alert alert--error">{error}</div>}
 
@@ -444,13 +634,22 @@ export function Dashboard() {
                       >
                         Preview
                       </button>
-                      <button
-                        className="btn btn--primary"
-                        onClick={() => sendLead(lead.rowIndex)}
-                        disabled={isBusy}
-                      >
-                        {isSending ? "…" : "Send"}
-                      </button>
+                      {isSending ? (
+                        <button
+                          className="btn btn--cancel"
+                          onClick={() => cancelSend(lead.rowIndex)}
+                        >
+                          Cancel
+                        </button>
+                      ) : (
+                        <button
+                          className="btn btn--primary"
+                          onClick={() => sendLead(lead.rowIndex)}
+                          disabled={isBusy}
+                        >
+                          Send
+                        </button>
+                      )}
                     </>
                   )}
                   {lead.gmailThreadId && (

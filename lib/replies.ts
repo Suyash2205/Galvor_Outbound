@@ -1,11 +1,18 @@
 import { checkThreadForReply } from "./gmail";
-import { fetchAllLeads, updateLeadRow } from "./sheets";
+import { fetchAllLeads, invalidateLeadsCache, updateLeadRow } from "./sheets";
 import type { Lead } from "./types";
+
+export interface ReplyCheckResult {
+  checked: number;
+  moved: number;
+  movedRows: number[];
+  movedLeads: { rowIndex: number; companyName: string }[];
+}
 
 export async function checkRepliesForAllLeads(params: {
   accessToken: string;
   senderEmail: string;
-}): Promise<{ checked: number; moved: number }> {
+}): Promise<ReplyCheckResult> {
   const leads = await fetchAllLeads();
   const active = leads.filter(
     (l) =>
@@ -16,6 +23,8 @@ export async function checkRepliesForAllLeads(params: {
   );
 
   let moved = 0;
+  const movedRows: number[] = [];
+  const movedLeads: { rowIndex: number; companyName: string }[] = [];
 
   for (const lead of active) {
     const afterTs = getLastSentTimestamp(lead);
@@ -34,11 +43,20 @@ export async function checkRepliesForAllLeads(params: {
         respondedAt: new Date().toISOString(),
         errorMessage: "",
       });
+      movedRows.push(lead.rowIndex);
+      movedLeads.push({
+        rowIndex: lead.rowIndex,
+        companyName: lead.companyName || lead.email || `Row ${lead.rowIndex}`,
+      });
       moved++;
     }
   }
 
-  return { checked: active.length, moved };
+  if (moved > 0) {
+    invalidateLeadsCache();
+  }
+
+  return { checked: active.length, moved, movedRows, movedLeads };
 }
 
 function getLastSentTimestamp(lead: Lead): number | undefined {

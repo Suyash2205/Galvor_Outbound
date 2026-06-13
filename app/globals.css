@@ -234,6 +234,72 @@ input[type="checkbox"] {
   font-weight: 500;
 }
 
+/* Reply alert banner */
+.reply-alert {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  margin-bottom: 16px;
+  border-radius: var(--r);
+  overflow: hidden;
+  border: 1px solid var(--success-border);
+  background: var(--success-soft);
+  box-shadow: var(--shadow-md);
+}
+
+.reply-alert__main {
+  flex: 1;
+  text-align: left;
+  padding: 14px 16px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.reply-alert__main:hover {
+  background: rgba(45, 122, 95, 0.08);
+}
+
+.reply-alert__title {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--success);
+  margin-bottom: 2px;
+}
+
+.reply-alert__text {
+  display: block;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.reply-alert__dismiss {
+  width: 44px;
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--success-border);
+  color: var(--text-secondary);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.reply-alert__dismiss:hover {
+  background: rgba(45, 122, 95, 0.08);
+  color: var(--text);
+}
+
+.btn--cancel {
+  background: var(--error-soft);
+  color: var(--error);
+  border-color: var(--error-border);
+}
+
+.btn--cancel:hover:not(:disabled) {
+  background: #fce4e4;
+}
+
 /* Alerts */
 .alert {
   border-radius: var(--r);
