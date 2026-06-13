@@ -12,8 +12,7 @@ import { signOut, useSession } from "next-auth/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const SPREADSHEET_ID = "1-nZCTRbeZCLgUPA91k37QlFHbL99sIKIdIUSB9tbmdc";
-const IDLE_BEFORE_REPLY_CHECK_MS = 2 * 60 * 1000;
-const ACTIVE_REPLY_POLL_MS = 30 * 1000;
+const ACTIVE_REPLY_POLL_MS = 10 * 1000;
 
 interface SendCancelToken {
   cancelled: boolean;
@@ -92,21 +91,6 @@ export function Dashboard() {
     }
   };
 
-  const fetchLeads = useCallback(async (fresh = false) => {
-    try {
-      const url = fresh ? "/api/leads?fresh=1" : "/api/leads";
-      const res = await fetch(url);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to load leads");
-      setLeads(data.leads);
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load leads");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   const applyReplyResults = useCallback(
     (movedRows: number[], movedLeads: MovedLeadInfo[]) => {
       if (!movedRows.length) return;
@@ -119,8 +103,8 @@ export function Dashboard() {
         }
       }
 
-      setLeads((prev) =>
-        prev.map((lead) =>
+      setLeads((prev) => {
+        const next = prev.map((lead) =>
           movedRows.includes(lead.rowIndex)
             ? {
                 ...lead,
@@ -130,8 +114,10 @@ export function Dashboard() {
                 errorMessage: "",
               }
             : lead
-        )
-      );
+        );
+        leadsRef.current = next;
+        return next;
+      });
       setSelected((prev) => {
         const next = new Set(prev);
         for (const rowIndex of movedRows) next.delete(rowIndex);
@@ -140,6 +126,49 @@ export function Dashboard() {
       setReplyAlert(movedLeads);
     },
     []
+  );
+
+  const fetchLeads = useCallback(
+    async (fresh = false) => {
+      try {
+        const url = fresh ? "/api/leads?fresh=1" : "/api/leads";
+        const res = await fetch(url);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to load leads");
+
+        const incoming = (data.leads as Lead[]) || [];
+        const prev = leadsRef.current;
+        if (prev.length) {
+          const newlyResponded = incoming.filter(
+            (lead) =>
+              lead.stage === "Response Received" &&
+              !prev.some(
+                (p) =>
+                  p.rowIndex === lead.rowIndex &&
+                  p.stage === "Response Received"
+              )
+          );
+          if (newlyResponded.length) {
+            applyReplyResults(
+              newlyResponded.map((l) => l.rowIndex),
+              newlyResponded.map((l) => ({
+                rowIndex: l.rowIndex,
+                companyName: l.companyName || l.email || `Row ${l.rowIndex}`,
+              }))
+            );
+          }
+        }
+
+        leadsRef.current = incoming;
+        setLeads(incoming);
+        setError(null);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to load leads");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [applyReplyResults]
   );
 
   const runReplyCheck = useCallback(
@@ -203,21 +232,33 @@ export function Dashboard() {
 
       const hiddenMs = hiddenAtRef.current ? Date.now() - hiddenAtRef.current : 0;
       hiddenAtRef.current = null;
-      if (hiddenMs >= IDLE_BEFORE_REPLY_CHECK_MS) {
+      if (hiddenMs > 0) {
+        runReplyCheck({ silent: true });
+      }
+    };
+
+    const onFocus = () => {
+      if (document.visibilityState === "visible") {
         runReplyCheck({ silent: true });
       }
     };
 
     document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("focus", onFocus);
+    };
   }, [runReplyCheck]);
 
   useEffect(() => {
-    const interval = setInterval(() => {
+    const poll = () => {
       if (document.visibilityState === "visible") {
         runReplyCheck({ silent: true });
       }
-    }, ACTIVE_REPLY_POLL_MS);
+    };
+    poll();
+    const interval = setInterval(poll, ACTIVE_REPLY_POLL_MS);
     return () => clearInterval(interval);
   }, [runReplyCheck]);
 

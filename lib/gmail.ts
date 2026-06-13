@@ -410,19 +410,28 @@ export async function checkThreadForReply(params: {
 
   const leadEmailLower = params.leadEmail.toLowerCase();
   const senderLower = params.senderEmail.toLowerCase();
+  const selfTest = leadEmailLower === senderLower;
 
   for (const msg of thread.data.messages || []) {
+    const labels = msg.labelIds || [];
+    if (!labels.includes("INBOX")) continue;
+
+    const internalDate = Number(msg.internalDate || 0);
     const headers = msg.payload?.headers || [];
     const from = headers.find((h) => h.name === "From")?.value || "";
     const dateStr = headers.find((h) => h.name === "Date")?.value || "";
-    const date = dateStr ? new Date(dateStr).getTime() : 0;
+    const headerDate = dateStr ? new Date(dateStr).getTime() : 0;
+    const messageDate = internalDate || headerDate;
 
-    if (params.afterTimestamp && date < params.afterTimestamp) continue;
+    if (params.afterTimestamp && messageDate <= params.afterTimestamp) continue;
 
     const fromLower = from.toLowerCase();
-    if (fromLower.includes(leadEmailLower) && !fromLower.includes(senderLower)) {
-      return true;
-    }
+    if (!fromLower.includes(leadEmailLower)) continue;
+
+    // Different accounts: reply must be from lead, not our outbound From header quirks
+    if (!selfTest && fromLower.includes(senderLower)) continue;
+
+    return true;
   }
 
   return false;
