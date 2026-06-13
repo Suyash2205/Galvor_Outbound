@@ -1,7 +1,8 @@
 import { ensureLeadReady } from "./lead-job";
-import { appendQuotedReply } from "./email/templates";
+import { appendQuotedReply, appendSignature } from "./email/templates";
 import {
   getGmailMessageUrl,
+  getGmailSignature,
   getGmailThreadUrl,
   getThreadReplyContext,
   resolveFollowUpHeaders,
@@ -64,6 +65,7 @@ export async function sendLeadEmail(params: {
     let plainBody = email.plainBody;
     let htmlBody = email.htmlBody;
     let threadHeaders: { threadId?: string; inReplyTo?: string; references?: string } = {};
+    let quoteContext: { attribution: string; plain: string; html?: string } | null = null;
 
     if (isFollowUp) {
       if (!lead.gmailThreadId) {
@@ -89,9 +91,7 @@ export async function sendLeadEmail(params: {
             references: ctx.references,
           };
           if (ctx.quote.plain.trim()) {
-            const quoted = appendQuotedReply(plainBody, htmlBody, ctx.quote);
-            plainBody = quoted.plainBody;
-            htmlBody = quoted.htmlBody;
+            quoteContext = ctx.quote;
           }
         }
       }
@@ -115,6 +115,19 @@ export async function sendLeadEmail(params: {
           "Could not attach follow-up to the existing Gmail thread. Check gmail_thread_id in the sheet."
         );
       }
+    }
+
+    const signature = await getGmailSignature(accessToken, senderEmail);
+    if (signature) {
+      const withSignature = appendSignature(plainBody, htmlBody, signature);
+      plainBody = withSignature.plainBody;
+      htmlBody = withSignature.htmlBody;
+    }
+
+    if (quoteContext) {
+      const quoted = appendQuotedReply(plainBody, htmlBody, quoteContext);
+      plainBody = quoted.plainBody;
+      htmlBody = quoted.htmlBody;
     }
 
     const { messageId, threadId } = await sendGmailMessage({

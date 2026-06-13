@@ -306,6 +306,52 @@ export async function resolveFollowUpHeaders(
   };
 }
 
+export async function getGmailSignature(
+  accessToken: string,
+  senderEmail: string
+): Promise<{ html: string; plain: string } | null> {
+  const oauth2 = new google.auth.OAuth2();
+  oauth2.setCredentials({ access_token: accessToken });
+  const gmail = google.gmail({ version: "v1", auth: oauth2 });
+
+  try {
+    const res = await gmail.users.settings.sendAs.list({ userId: "me" });
+    const aliases = res.data.sendAs || [];
+    const normalized = senderEmail.toLowerCase();
+
+    const alias =
+      aliases.find((a) => a.sendAsEmail?.toLowerCase() === normalized) ||
+      aliases.find((a) => a.isPrimary) ||
+      aliases.find((a) => a.isDefault);
+
+    const signatureHtml = alias?.signature?.trim();
+    if (!signatureHtml) return null;
+
+    return {
+      html: signatureHtml,
+      plain: signatureHtmlToPlain(signatureHtml),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function signatureHtmlToPlain(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<\/div>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&#39;/gi, "'")
+    .replace(/&quot;/gi, '"')
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export async function sendGmailMessage(params: {
   accessToken: string;
   from: string;

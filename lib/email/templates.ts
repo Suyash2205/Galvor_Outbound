@@ -47,6 +47,17 @@ export function appendQuotedReply(
   };
 }
 
+export function appendSignature(
+  plainBody: string,
+  htmlBody: string,
+  signature: { html: string; plain: string }
+): { plainBody: string; htmlBody: string } {
+  return {
+    plainBody: `${plainBody.trim()}\n\n${signature.plain.trim()}`,
+    htmlBody: `${htmlBody.trim()}<br><br>${signature.html.trim()}`,
+  };
+}
+
 function buildPlainTable(clusters: AdCluster[]): string {
   const cols = [
     { label: "Cluster", w: 30 },
