@@ -16,6 +16,35 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 const SPREADSHEET_ID = "1-nZCTRbeZCLgUPA91k37QlFHbL99sIKIdIUSB9tbmdc";
 const ACTIVE_REPLY_POLL_MS = 10 * 1000;
 
+type IndustrySort = "default" | "industry-asc" | "industry-desc";
+
+function leadMatchesSearch(lead: Lead, query: string): boolean {
+  const haystack = [
+    lead.email,
+    lead.firstName,
+    lead.lastName,
+    lead.companyName,
+    lead.industry,
+    `${lead.firstName} ${lead.lastName}`.trim(),
+  ]
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(query);
+}
+
+function sortLeadsByIndustry(leads: Lead[], sort: IndustrySort): Lead[] {
+  if (sort === "default") return leads;
+  return [...leads].sort((a, b) => {
+    const aIndustry = (a.industry || "").trim();
+    const bIndustry = (b.industry || "").trim();
+    if (!aIndustry && !bIndustry) return 0;
+    if (!aIndustry) return 1;
+    if (!bIndustry) return -1;
+    const cmp = aIndustry.localeCompare(bIndustry, undefined, { sensitivity: "base" });
+    return sort === "industry-asc" ? cmp : -cmp;
+  });
+}
+
 interface SendCancelToken {
   cancelled: boolean;
   abort?: AbortController;
@@ -52,6 +81,8 @@ export function Dashboard() {
   const [importLead, setImportLead] = useState<Lead | null>(null);
   const [importLoading, setImportLoading] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [industrySort, setIndustrySort] = useState<IndustrySort>("default");
   const [crmSyncing, setCrmSyncing] = useState(false);
   const crmSyncInFlight = useRef(false);
   const [replyAlert, setReplyAlert] = useState<MovedLeadInfo[] | null>(null);
@@ -323,6 +354,12 @@ export function Dashboard() {
     [leads, activeStage]
   );
 
+  const visibleLeads = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    const filtered = q ? stageLeads.filter((l) => leadMatchesSearch(l, q)) : stageLeads;
+    return sortLeadsByIndustry(filtered, industrySort);
+  }, [stageLeads, searchQuery, industrySort]);
+
   const stageCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const tab of STAGE_TABS) {
@@ -341,10 +378,10 @@ export function Dashboard() {
   };
 
   const toggleSelectAll = () => {
-    const selectable = stageLeads.filter(
+    const selectable = visibleLeads.filter(
       (l) => !previewingRows.has(l.rowIndex) && !sendingRows.has(l.rowIndex) && !bulkProgress
     );
-    if (selected.size === selectable.length) {
+    if (selected.size === selectable.length && selectable.length > 0) {
       setSelected(new Set());
     } else {
       setSelected(new Set(selectable.map((l) => l.rowIndex)));
@@ -633,7 +670,7 @@ export function Dashboard() {
   const sendSelected = () => sendBulk([...selected]);
   const sendAll = () =>
     sendBulk(
-      stageLeads
+      visibleLeads
         .filter(
           (l) =>
             !previewingRows.has(l.rowIndex) &&
@@ -698,13 +735,62 @@ export function Dashboard() {
           ))}
         </div>
 
+        <div className="lead-filters">
+          <div className="lead-filters__search">
+            <input
+              type="search"
+              className="lead-filters__input"
+              placeholder="Search email, name, company, industry…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              aria-label="Search leads"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                className="lead-filters__clear"
+                onClick={() => setSearchQuery("")}
+                aria-label="Clear search"
+              >
+                ×
+              </button>
+            )}
+          </div>
+          <label className="lead-filters__sort">
+            <span>Sort</span>
+            <select
+              value={industrySort}
+              onChange={(e) => setIndustrySort(e.target.value as IndustrySort)}
+              aria-label="Sort by industry"
+            >
+              <option value="default">Sheet order</option>
+              <option value="industry-asc">Industry A → Z</option>
+              <option value="industry-desc">Industry Z → A</option>
+            </select>
+          </label>
+          <span className="lead-filters__count">
+            {visibleLeads.length === stageLeads.length
+              ? `${stageLeads.length} lead${stageLeads.length === 1 ? "" : "s"}`
+              : `${visibleLeads.length} of ${stageLeads.length}`}
+          </span>
+        </div>
+
         {canSend && (
           <div className="toolbar">
             <label className="toolbar-label">
               <input
                 type="checkbox"
                 onChange={toggleSelectAll}
-                checked={selected.size > 0 && selected.size === stageLeads.length}
+                checked={
+                  visibleLeads.length > 0 &&
+                  visibleLeads.every(
+                    (l) =>
+                      selected.has(l.rowIndex) ||
+                      previewingRows.has(l.rowIndex) ||
+                      sendingRows.has(l.rowIndex) ||
+                      !!bulkProgress
+                  )
+                }
               />
               Select all
             </label>
@@ -718,7 +804,7 @@ export function Dashboard() {
             <button
               className="btn btn--secondary"
               onClick={sendAll}
-              disabled={!stageLeads.length || !!bulkProgress}
+              disabled={!visibleLeads.length || !!bulkProgress}
             >
               Send All Ready
             </button>
@@ -744,8 +830,17 @@ export function Dashboard() {
           </div>
         )}
 
+        {!loading && stageLeads.length > 0 && visibleLeads.length === 0 && (
+          <div className="empty-state">
+            No leads match <strong>{searchQuery}</strong>.{" "}
+            <button type="button" className="link-btn" onClick={() => setSearchQuery("")}>
+              Clear search
+            </button>
+          </div>
+        )}
+
         <div className="lead-list">
-          {stageLeads.map((lead) => {
+          {visibleLeads.map((lead) => {
             const isSending = sendingRows.has(lead.rowIndex);
             const isPreviewing = previewingRows.has(lead.rowIndex);
             const isBusy = isSending || isPreviewing;
