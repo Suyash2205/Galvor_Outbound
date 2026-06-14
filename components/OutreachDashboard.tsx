@@ -301,7 +301,7 @@ export function OutreachDashboard() {
           <section className="outreach-card">
             <h2 className="outreach-card__title">Email status sync</h2>
             <p className="outreach-card__hint">
-              Auto-fill columns L/M/N (Email Status, Last Email Date, Outcome) from Outbound
+              Auto-fill columns M/N/O (Email Status, Last Email Date, Outcome) from Outbound
               Pipeline. Matches by email first, then fuzzy company name.
             </p>
             <div className="outreach-form__actions">

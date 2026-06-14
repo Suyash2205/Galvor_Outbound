@@ -12,13 +12,14 @@ import {
 const TRACKER_HEADER_ROW = 3;
 const TRACKER_DATA_START = 4;
 
-/** Column indices (0-based) on the main tracker tab */
+/** Column indices (0-based) on the main tracker tab (row 3 headers) */
 export const TRACKER_COL = {
-  brand: 0, // A
-  email: 9, // J
-  emailStatus: 11, // L
-  lastEmailDate: 12, // M
-  emailOutcome: 13, // N
+  brand: 0, // A — Company / Brand
+  email: 9, // J — Email Address
+  phone: 10, // K — Phone Number
+  emailStatus: 12, // M — Email Status
+  lastEmailDate: 13, // N — Last Email Date
+  emailOutcome: 14, // O — Email Outcome
 } as const;
 
 function getAuth() {
@@ -114,7 +115,7 @@ export async function fetchTrackerContactRows(): Promise<TrackerContactRow[]> {
 
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range: `${tab}!A${TRACKER_DATA_START}:N`,
+    range: `${tab}!A${TRACKER_DATA_START}:O`,
   });
 
   const rows: TrackerContactRow[] = [];
@@ -144,15 +145,15 @@ export async function batchUpdateTrackerEmailFields(
   const spreadsheetId = getSpreadsheetId();
   const tab = await resolveTrackerTab();
 
-  const lCol = colLetter(TRACKER_COL.emailStatus);
-  const nCol = colLetter(TRACKER_COL.emailOutcome);
+  const mCol = colLetter(TRACKER_COL.emailStatus);
+  const oCol = colLetter(TRACKER_COL.emailOutcome);
 
   await sheets.spreadsheets.values.batchUpdate({
     spreadsheetId,
     requestBody: {
       valueInputOption: "RAW",
       data: updates.map((u) => ({
-        range: `${tab}!${lCol}${u.rowIndex}:${nCol}${u.rowIndex}`,
+        range: `${tab}!${mCol}${u.rowIndex}:${oCol}${u.rowIndex}`,
         values: [[u.emailStatus, u.lastEmailDate, u.emailOutcome]],
       })),
     },
