@@ -160,3 +160,106 @@ export async function generateAnalysisFromEmail1(
   }
   return result;
 }
+
+export async function polishActivityComment(
+  brand: string,
+  category: string,
+  comments: string
+): Promise<string> {
+  const trimmed = comments.trim();
+  if (!trimmed) throw new Error("Comments are empty.");
+
+  const prompt = `You polish short sales activity notes for Galvor's weekly update email.
+
+Brand: ${brand}
+Category: ${category}
+Raw notes:
+---
+${trimmed}
+---
+
+Rewrite as ONE concise bullet suitable for a weekly sales update email (like "Foxtale — intro made on 10/6; phone call on 11/6. Awaiting meeting confirmation for next week.").
+
+Rules:
+- Keep all factual dates, names, and outcomes from the raw notes
+- Do not invent details
+- Start with the brand name followed by an em dash
+- Max 2 sentences
+- Plain text only — no markdown
+
+Return ONLY the polished bullet text.`;
+
+  const raw = await callClaude(prompt);
+  const polished = raw.trim().replace(/^[-•*]\s*/, "");
+  if (!polished) throw new Error("Could not polish comment.");
+  return polished;
+}
+
+export async function generateWeeklyDraft(
+  activities: {
+    category: string;
+    brand: string;
+    comments: string;
+    polishedComment: string;
+    activityDate: string;
+  }[],
+  weekLabel: string
+): Promise<{ subject: string; body: string }> {
+  const grouped = {
+    Contracting: [] as string[],
+    Demo: [] as string[],
+    Call: [] as string[],
+    "New account": [] as string[],
+    "Follow-up": [] as string[],
+  };
+
+  for (const a of activities) {
+    const text = (a.polishedComment || a.comments).trim();
+    if (!text) continue;
+    const key = a.category as keyof typeof grouped;
+    if (grouped[key]) grouped[key].push(`${a.brand} — ${text}`);
+  }
+
+  const activitySummary = Object.entries(grouped)
+    .map(([cat, items]) => `${cat} (${items.length}):\n${items.map((i) => `- ${i}`).join("\n") || "- (none)"}`)
+    .join("\n\n");
+
+  const prompt = `You write Galvor's weekly Sales & Marketing Update email for internal stakeholders (Kuljit, Amit, Mohit style).
+
+Week: ${weekLabel}
+
+Logged activities this week:
+${activitySummary}
+
+Write a complete weekly update email with these sections (use exact section titles):
+
+1. **Contracting** — bullet list
+2. **Demos / In Analysis** — bullet list (from Demo category)
+3. **Calls / Meetings** — bullet list (from Call category)
+4. **New Accounts Opened This Week** — bullet list (from New account category)
+5. **Follow-ups Pending** — bullet list (from Follow-up category)
+6. **Outreach — Email** — brief pipeline summary placeholder noting bulk sends if any activities mention email outreach; otherwise write "No major bulk email sends logged this week."
+7. **Marketing Update — LinkedIn** — placeholder: "[Add LinkedIn stats manually — API coming soon]"
+
+Rules:
+- Use the activity notes provided; expand slightly for readability but do not invent meetings or outcomes
+- Format dates as D/M or DD/MM like the team uses (e.g. 11/6)
+- Professional, concise tone matching a B2B agency sales update
+- Plain text with section headers in ALL CAPS or Title Case as shown above
+- Start with "Sales Update" as the title line
+- Do not include subject line in the body
+
+Return JSON only:
+{"subject":"Sales Update — Week of ...","body":"..."}`;
+
+  const raw = await callClaude(prompt);
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error("Unexpected response from Claude.");
+
+  const result = JSON.parse(match[0]) as { subject?: string; body?: string };
+  if (!result.body?.trim()) throw new Error("Weekly draft was empty.");
+  return {
+    subject: result.subject?.trim() || `Sales Update — ${weekLabel}`,
+    body: result.body.trim(),
+  };
+}

@@ -11,6 +11,7 @@ import type { JobPhase } from "@/lib/lead-job";
 import type { EmailContent, Lead, LeadStage } from "@/lib/types";
 import { STAGE_TABS, SHEET_TAB_GID } from "@/lib/types";
 import { signOut, useSession } from "next-auth/react";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const SPREADSHEET_ID = "1-nZCTRbeZCLgUPA91k37QlFHbL99sIKIdIUSB9tbmdc";
@@ -691,6 +692,9 @@ export function Dashboard() {
           <span className="brand-badge">Outbound Pipeline</span>
         </div>
         <div className="header-actions">
+          <Link href="/outreach" className="btn btn--ghost">
+            Outreach
+          </Link>
           <button className="btn btn--ghost" onClick={() => fetchLeads(true)}>
             Refresh
           </button>
