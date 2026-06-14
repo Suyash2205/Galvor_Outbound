@@ -58,8 +58,8 @@ export interface EmailContent {
 export const SHEET_TAB_NAME = "Outbound Pipeline";
 export const SHEET_TAB_GID = "395826309";
 
-/** LinkedIn / CRM source tab — gid 938325154 */
-export const CRM_SOURCE_TAB_NAME = "Galvor CRM - Outbound - For LinkedIn";
+/** CRM source tab (gid 938325154) — Contacts CRM - India */
+export const CRM_SOURCE_TAB_NAME = "Contacts CRM - India";
 export const CRM_SOURCE_TAB_GID = "938325154";
 
 export const SHEET_HEADERS = [
