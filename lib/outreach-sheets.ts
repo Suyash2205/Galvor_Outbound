@@ -15,8 +15,8 @@ const TRACKER_DATA_START = 4;
 /** Column indices (0-based) on the main tracker tab (row 3 headers) */
 export const TRACKER_COL = {
   brand: 0, // A — Company / Brand
-  email: 9, // J — Email Address
-  phone: 10, // K — Phone Number
+  email: 10, // K — Email Address
+  phone: 11, // L — Phone Number
   emailStatus: 12, // M — Email Status
   lastEmailDate: 13, // N — Last Email Date
   emailOutcome: 14, // O — Email Outcome
