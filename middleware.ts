@@ -21,8 +21,9 @@ export default auth((req) => {
 
   const isLoggedIn = !!req.auth;
   const isLoginPage = pathname.startsWith("/login");
+  const isPublicPage = pathname.startsWith("/privacy");
 
-  if (!isLoggedIn && !isLoginPage) {
+  if (!isLoggedIn && !isLoginPage && !isPublicPage) {
     return NextResponse.redirect(new URL("/login", req.nextUrl.origin));
   }
 
