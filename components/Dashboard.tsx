@@ -52,6 +52,8 @@ export function Dashboard() {
   const [importLead, setImportLead] = useState<Lead | null>(null);
   const [importLoading, setImportLoading] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
+  const [crmSyncing, setCrmSyncing] = useState(false);
+  const crmSyncInFlight = useRef(false);
   const [replyAlert, setReplyAlert] = useState<MovedLeadInfo[] | null>(null);
   const replyCheckInFlight = useRef(false);
   const hiddenAtRef = useRef<number | null>(null);
@@ -221,13 +223,52 @@ export function Dashboard() {
     [applyReplyResults, fetchLeads]
   );
 
+  const syncCrm = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (crmSyncInFlight.current) return null;
+      crmSyncInFlight.current = true;
+      setCrmSyncing(true);
+      try {
+        const res = await fetch("/api/crm/sync", { method: "POST" });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "CRM sync failed");
+
+        await fetchLeads(true);
+
+        if (!options?.silent && data.imported > 0) {
+          showActionMessage(
+            `Imported ${data.imported} new lead${data.imported === 1 ? "" : "s"} from CRM tab`
+          );
+        } else if (!options?.silent) {
+          showActionMessage(`CRM sync done — ${data.scanned} checked, no new leads`);
+        }
+
+        return data as { scanned: number; imported: number; skipped: number };
+      } catch (e) {
+        if (!options?.silent) {
+          setError(e instanceof Error ? e.message : "CRM sync failed");
+        }
+        return null;
+      } finally {
+        crmSyncInFlight.current = false;
+        setCrmSyncing(false);
+      }
+    },
+    [fetchLeads]
+  );
+
   useEffect(() => {
     fetchLeads(true).then(() => {
       runReplyCheck({ silent: true });
+      syncCrm({ silent: true });
     });
     const syncInterval = setInterval(() => fetchLeads(false), 180_000);
-    return () => clearInterval(syncInterval);
-  }, [fetchLeads, runReplyCheck]);
+    const crmInterval = setInterval(() => syncCrm({ silent: true }), 15 * 60 * 1000);
+    return () => {
+      clearInterval(syncInterval);
+      clearInterval(crmInterval);
+    };
+  }, [fetchLeads, runReplyCheck, syncCrm]);
 
   useEffect(() => {
     const onVisibilityChange = () => {
@@ -614,7 +655,10 @@ export function Dashboard() {
         </div>
         <div className="header-actions">
           <button className="btn btn--ghost" onClick={() => fetchLeads(true)}>
-            Sync
+            Refresh
+          </button>
+          <button className="btn btn--ghost" onClick={() => syncCrm()} disabled={crmSyncing}>
+            {crmSyncing ? "Syncing CRM…" : "Sync CRM"}
           </button>
           <button className="btn btn--ghost" onClick={checkReplies}>
             Check Replies

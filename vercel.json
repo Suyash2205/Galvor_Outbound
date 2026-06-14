@@ -6,6 +6,9 @@
     "app/api/cron/check-replies": {
       "maxDuration": 60
     },
+    "app/api/cron/sync-crm": {
+      "maxDuration": 60
+    },
     "app/api/replies/check": {
       "maxDuration": 60
     }

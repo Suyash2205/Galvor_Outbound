@@ -3,6 +3,7 @@ import {
   SHEET_HEADERS,
   SHEET_TAB_NAME,
   SHEET_TAB_GID,
+  CRM_SOURCE_TAB_NAME,
   type ClaudeAnalysis,
   type Lead,
   type LeadStage,
@@ -89,7 +90,7 @@ export function rowToLead(row: string[], rowIndex: number): Lead | null {
   };
 }
 
-function leadToRow(lead: Partial<Lead> & { rowIndex?: number }): string[] {
+export function leadToRow(lead: Partial<Lead> & { rowIndex?: number }): string[] {
   return [
     lead.leadId ?? "",
     lead.email ?? "",
@@ -281,4 +282,35 @@ export function stageToSentField(stage: LeadStage): keyof Lead | null {
     "6": "email6SentAt",
   };
   return map[stage] ?? null;
+}
+
+export async function fetchCrmSourceRows(): Promise<string[][]> {
+  const auth = getAuth();
+  const sheets = google.sheets({ version: "v4", auth });
+  const spreadsheetId = getSpreadsheetId();
+
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `${CRM_SOURCE_TAB_NAME}!A2:K`,
+  });
+
+  return (res.data.values || []) as string[][];
+}
+
+export async function appendPipelineRows(rows: string[][]): Promise<void> {
+  if (!rows.length) return;
+
+  const auth = getAuth();
+  const sheets = google.sheets({ version: "v4", auth });
+  const spreadsheetId = getSpreadsheetId();
+
+  await sheets.spreadsheets.values.append({
+    spreadsheetId,
+    range: `${SHEET_TAB_NAME}!A:W`,
+    valueInputOption: "RAW",
+    insertDataOption: "INSERT_ROWS",
+    requestBody: { values: rows },
+  });
+
+  invalidateLeadsCache();
 }
