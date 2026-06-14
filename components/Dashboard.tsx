@@ -1,10 +1,12 @@
 "use client";
 
 import { GalvorBrand } from "@/components/GalvorBrand";
+import { ImportEmail1Modal } from "@/components/ImportEmail1Modal";
 import { LeadSendProgress, type RowSendState } from "@/components/LeadSendProgress";
 import { PreviewModal } from "@/components/PreviewModal";
 import { ReplyAlert } from "@/components/ReplyAlert";
 import { phaseToProgress, runLeadJobUntilReady, SendCancelledError } from "@/lib/job-client";
+import { needsEmail1Import } from "@/lib/lead-import";
 import type { JobPhase } from "@/lib/lead-job";
 import type { EmailContent, Lead, LeadStage } from "@/lib/types";
 import { STAGE_TABS, SHEET_TAB_GID } from "@/lib/types";
@@ -46,6 +48,10 @@ export function Dashboard() {
   const [previewRowIndex, setPreviewRowIndex] = useState<number | null>(null);
   const [previewingRows, setPreviewingRows] = useState<Set<number>>(new Set());
   const previewCancelledRef = useRef(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importLead, setImportLead] = useState<Lead | null>(null);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
   const [replyAlert, setReplyAlert] = useState<MovedLeadInfo[] | null>(null);
   const replyCheckInFlight = useRef(false);
   const hiddenAtRef = useRef<number | null>(null);
@@ -330,6 +336,42 @@ export function Dashboard() {
     setLeadProgress(rowIndex, "Cancelled", "cancelled", "error");
     clearLeadProgress(rowIndex, 4000);
     fetchLeads(true);
+  };
+
+  const openImportEmail1 = (lead: Lead) => {
+    setImportLead(lead);
+    setImportError(null);
+    setImportOpen(true);
+  };
+
+  const closeImportEmail1 = () => {
+    if (importLoading) return;
+    setImportOpen(false);
+    setImportLead(null);
+    setImportError(null);
+  };
+
+  const submitImportEmail1 = async (email1Body: string) => {
+    if (!importLead) return;
+    setImportLoading(true);
+    setImportError(null);
+    try {
+      const res = await fetch(`/api/leads/${importLead.rowIndex}/import-email1`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email1Body }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Import failed");
+      showActionMessage(`Cache saved for ${importLead.companyName || "lead"} — ready to send follow-ups`);
+      setImportOpen(false);
+      setImportLead(null);
+      await fetchLeads(true);
+    } catch (e) {
+      setImportError(e instanceof Error ? e.message : "Import failed");
+    } finally {
+      setImportLoading(false);
+    }
   };
 
   const closePreview = () => {
@@ -689,6 +731,9 @@ export function Dashboard() {
                     {lead.firstName} {lead.lastName} · {lead.email}
                   </div>
                   {lead.industry && <div className="lead-industry">{lead.industry}</div>}
+                  {needsEmail1Import(lead) && (
+                    <div className="lead-import-hint">No cache — import sent Email 1 to enable follow-ups</div>
+                  )}
                 </div>
 
                 <StatusBadge status={displayStatus} />
@@ -702,6 +747,15 @@ export function Dashboard() {
                 )}
 
                 <div className="lead-actions">
+                  {needsEmail1Import(lead) && (
+                    <button
+                      className="btn btn--secondary"
+                      onClick={() => openImportEmail1(lead)}
+                      disabled={isBusy || importLoading}
+                    >
+                      Import Email 1
+                    </button>
+                  )}
                   {canSend && (
                     <>
                       <button
@@ -762,6 +816,16 @@ export function Dashboard() {
         loading={previewLoading}
         error={previewError}
         progressMessage={previewProgress}
+      />
+
+      <ImportEmail1Modal
+        open={importOpen}
+        companyName={importLead?.companyName || ""}
+        stage={importLead?.stage || ""}
+        loading={importLoading}
+        error={importError}
+        onClose={closeImportEmail1}
+        onSubmit={submitImportEmail1}
       />
     </>
   );

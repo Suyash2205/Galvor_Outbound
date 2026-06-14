@@ -101,3 +101,62 @@ export async function generateAnalysis(
   const raw = await callClaude(prompt);
   return parseClaudeResponse(raw);
 }
+
+export function buildImportEmail1Prompt(
+  brandName: string,
+  industry: string,
+  firstName: string,
+  email1Body: string
+): string {
+  return `You are a sharp ad intelligence analyst at Galvor, a performance marketing agency.
+
+A salesperson already sent Email 1 to ${firstName} at ${brandName} (${industry}) using our outbound playbook — but we no longer have the structured analysis cache. Your job is to reconstruct it from the sent email text so follow-up emails can be generated WITHOUT re-scraping the Meta Ad Library.
+
+EMAIL 1 THAT WAS ALREADY SENT:
+---
+${email1Body.trim()}
+---
+
+TASK 1 — Extract the ad clusters from the email table/content. Reconstruct 4–7 clusters with: name (max 3 words), description (1 line), adCount, avgAgeDays, oldestDays. Use the numbers and labels from the email when present; infer reasonably when the table is partial.
+
+TASK 2 — Extract or reconstruct the 2-sentence insight about ${brandName}'s ad mix (under 40 words total). Use "${brandName}" — never placeholders.
+
+TASK 3 — Write the follow-up email body (Email 2) that pairs with this Email 1. Sent 3 days later with no reply. Follow this EXACT structure — blocks separated by blank lines:
+
+Block 1 — "Hi ${firstName},"
+
+Block 2 — The data hook (2 sentences MAX):
+  Sentence 1: "Pulled ${brandName}'s ad library." then state ONE specific ratio or count from the clusters.
+  Sentence 2: Combine the competitive gap AND the missing piece into one punchy sentence.
+
+Block 3 — Cost + offer (2 sentences): "That gap has a measurable RoAS cost. We can quantify it for ${brandName} specifically — 20 minutes, no deck."
+
+Block 4 — CTA (standalone line): "Worth a call this week?"
+
+Rules for followUpBody:
+- Use REAL numbers from the cluster data
+- Use "${brandName}" — no placeholders
+- Do NOT reference the first email or say "I sent you something"
+- Tone: sharp, data-first, no fluff
+
+Respond ONLY with valid JSON — no markdown, no explanation:
+{"clusters":[{"name":"...","description":"...","adCount":0,"avgAgeDays":0,"oldestDays":0}],"insight":"...","followUpBody":"..."}`;
+}
+
+export async function generateAnalysisFromEmail1(
+  brandName: string,
+  industry: string,
+  firstName: string,
+  email1Body: string
+): Promise<ClaudeAnalysis> {
+  const trimmed = email1Body.trim();
+  if (!trimmed) throw new Error("Email 1 body is empty.");
+
+  const prompt = buildImportEmail1Prompt(brandName, industry, firstName, trimmed);
+  const raw = await callClaude(prompt);
+  const result = parseClaudeResponse(raw);
+  if (!result.followUpBody?.trim()) {
+    throw new Error("Could not generate follow-up body from Email 1. Try again with the full sent email.");
+  }
+  return result;
+}

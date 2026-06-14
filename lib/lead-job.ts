@@ -14,6 +14,7 @@ import {
   buildPlaceholderEmail,
 } from "./email/templates";
 import { fetchLeadByRow, updateLeadRow } from "./sheets";
+import { needsEmail1Import } from "./lead-import";
 import {
   DEFAULT_CLOSING_COPY,
   type EmailContent,
@@ -69,9 +70,15 @@ function buildFromCache(lead: Lead): EmailContent | null {
 }
 
 function needsScrape(lead: Lead): boolean {
-  if (lead.stage === "1") return !lead.cachedAnalysis;
-  if (lead.stage === "2") return !lead.cachedAnalysis;
-  return false;
+  if (lead.cachedAnalysis) return false;
+  // Only Email 1 stage scrapes; stage 2+ should use Import Email 1 instead
+  return lead.stage === "1";
+}
+
+function missingCacheMessage(lead: Lead): string {
+  return needsEmail1Import(lead)
+    ? "No cached analysis. Use Import Email 1 to paste the sent email and build the cache without re-scraping."
+    : "Email not ready. Wait for generation to finish.";
 }
 
 function emailFromLeadAndAnalysis(lead: Lead): EmailContent {
@@ -103,8 +110,21 @@ export async function startLeadJob(rowIndex: number): Promise<JobStatus> {
 
   const stageNum = parseInt(lead.stage, 10);
   if (stageNum >= 3 && stageNum <= 6) {
+    if (!lead.cachedAnalysis) {
+      const email = buildPlaceholderEmail(stageNum, lead.companyName, lead.firstName);
+      return {
+        phase: "ready",
+        message: "Placeholder email (import Email 1 to enable full follow-ups later).",
+        email,
+        lead,
+      };
+    }
     const email = buildPlaceholderEmail(stageNum, lead.companyName, lead.firstName);
     return { phase: "ready", message: "Email ready.", email, lead };
+  }
+
+  if (needsEmail1Import(lead)) {
+    return { phase: "error", message: missingCacheMessage(lead), lead };
   }
 
   if (!lead.metaAdLibraryUrl) {
@@ -142,8 +162,21 @@ export async function pollLeadJob(rowIndex: number): Promise<JobStatus> {
 
   const stageNum = parseInt(lead.stage, 10);
   if (stageNum >= 3 && stageNum <= 6) {
+    if (!lead.cachedAnalysis) {
+      const email = buildPlaceholderEmail(stageNum, lead.companyName, lead.firstName);
+      return {
+        phase: "ready",
+        message: "Placeholder email (import Email 1 to enable full follow-ups later).",
+        email,
+        lead,
+      };
+    }
     const email = buildPlaceholderEmail(stageNum, lead.companyName, lead.firstName);
     return { phase: "ready", message: "Email ready.", email, lead };
+  }
+
+  if (needsEmail1Import(lead)) {
+    return { phase: "error", message: missingCacheMessage(lead), lead };
   }
 
   const pendingAds = decodeAds(lead.notes);
@@ -235,8 +268,15 @@ export async function ensureLeadReady(rowIndex: number): Promise<{
 }> {
   const lead = await getLeadByRow(rowIndex);
   const email = buildFromCache(lead);
-  if (!email) {
-    throw new Error("Email not ready. Wait for generation to finish.");
+  if (email) return { lead, email };
+
+  const stageNum = parseInt(lead.stage, 10);
+  if (stageNum >= 3 && stageNum <= 6) {
+    return {
+      lead,
+      email: buildPlaceholderEmail(stageNum, lead.companyName, lead.firstName),
+    };
   }
-  return { lead, email };
+
+  throw new Error(missingCacheMessage(lead));
 }

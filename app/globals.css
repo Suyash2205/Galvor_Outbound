@@ -698,3 +698,47 @@ input[type="checkbox"] {
   padding: 20px;
   color: #1a1a1a;
 }
+
+.modal--import {
+  max-width: 640px;
+}
+
+.modal__import-hint {
+  margin: 0 0 16px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.modal__import-textarea {
+  width: 100%;
+  min-height: 280px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+  margin-bottom: 12px;
+}
+
+.modal__import-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(232, 120, 54, 0.15);
+}
+
+.modal__import-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.lead-import-hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #b45309;
+  font-weight: 500;
+}
