@@ -7,7 +7,7 @@ import { ReplyAlert } from "@/components/ReplyAlert";
 import { phaseToProgress, runLeadJobUntilReady, SendCancelledError } from "@/lib/job-client";
 import type { JobPhase } from "@/lib/lead-job";
 import type { EmailContent, Lead, LeadStage } from "@/lib/types";
-import { STAGE_TABS } from "@/lib/types";
+import { STAGE_TABS, SHEET_TAB_GID } from "@/lib/types";
 import { signOut, useSession } from "next-auth/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -581,7 +581,7 @@ export function Dashboard() {
             Init Sheet Tab
           </button>
           <a
-            href={`https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/edit`}
+            href={`https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/edit?gid=${SHEET_TAB_GID}#gid=${SHEET_TAB_GID}`}
             target="_blank"
             rel="noreferrer"
             className="btn btn--ghost"
@@ -740,7 +740,7 @@ export function Dashboard() {
                     </a>
                   )}
                   <a
-                    href={`https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/edit#gid=0&range=A${lead.rowIndex}`}
+                    href={`https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/edit?gid=${SHEET_TAB_GID}#gid=${SHEET_TAB_GID}&range=A${lead.rowIndex}`}
                     target="_blank"
                     rel="noreferrer"
                     className="btn btn--ghost"

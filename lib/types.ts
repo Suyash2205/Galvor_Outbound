@@ -56,6 +56,7 @@ export interface EmailContent {
 }
 
 export const SHEET_TAB_NAME = "Outbound Pipeline";
+export const SHEET_TAB_GID = "395826309";
 
 export const SHEET_HEADERS = [
   "lead_id",

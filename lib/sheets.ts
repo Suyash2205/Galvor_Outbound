@@ -2,6 +2,7 @@ import { google } from "googleapis";
 import {
   SHEET_HEADERS,
   SHEET_TAB_NAME,
+  SHEET_TAB_GID,
   type ClaudeAnalysis,
   type Lead,
   type LeadStage,
@@ -258,7 +259,7 @@ export async function updateLeadRow(
 
 export function getSheetUrl(rowIndex?: number): string {
   const id = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
-  const base = `https://docs.google.com/spreadsheets/d/${id}/edit#gid=0`;
+  const base = `https://docs.google.com/spreadsheets/d/${id}/edit?gid=${SHEET_TAB_GID}#gid=${SHEET_TAB_GID}`;
   if (rowIndex) return `${base}&range=A${rowIndex}`;
   return base;
 }
