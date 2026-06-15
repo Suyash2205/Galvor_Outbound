@@ -159,27 +159,59 @@ export function mergeCommentThreads(
   return [...filterWorkComments(legacyThread), ...activityThread];
 }
 
+function extractEmailStatusFromLegacy(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed === "0") return "";
+
+  const thread = parseLegacyComments(trimmed);
+  const emailLines = thread.filter((c) => isEmailOnlyLine(c.text));
+
+  if (!emailLines.length) {
+    if (isEmailOnlyLine(trimmed)) {
+      const dated = trimmed.match(/^(\d{1,2}\/\d{1,2})\s*-\s*(.+)$/);
+      return dated ? `${dated[1]} - ${dated[2].trim()}` : trimmed;
+    }
+    return "";
+  }
+
+  const ranked = emailLines.map((c) => {
+    const t = c.text.toLowerCase();
+    let n = 1;
+    const ord = t.match(/(\d+)(st|nd|rd|th)\s+email/);
+    if (ord) n = parseInt(ord[1], 10);
+    return { ...c, n };
+  });
+  ranked.sort((a, b) => b.n - a.n);
+  const best = ranked[0];
+  return best.date ? `${best.date} - ${best.text}` : best.text;
+}
+
 export function deriveFinalStatus(
   brand: string,
   activities: OutreachActivity[],
-  pipelineLeads: Lead[]
+  pipelineLeads: Lead[],
+  legacyRaw = ""
 ): string {
   const brandActivities = activitiesForBrand(brand, activities);
-  // Active lead only when real outreach work was logged
   if (brandActivities.length > 0) return "Active lead";
 
   const brandLeads = leadsForBrand(brand, pipelineLeads);
-  if (!brandLeads.length) return "";
 
-  const hasResponse = brandLeads.some(
-    (l) =>
-      Boolean(l.respondedAt?.trim()) ||
-      l.stage === "Response Received" ||
-      l.status === "responded"
-  );
-  if (hasResponse) return "Response received but no work done";
+  if (brandLeads.length) {
+    const hasResponse = brandLeads.some(
+      (l) =>
+        Boolean(l.respondedAt?.trim()) ||
+        l.stage === "Response Received" ||
+        l.status === "responded"
+    );
+    if (hasResponse) return "Response received but no work done";
 
-  return deriveEmailFinalStatus(brandLeads);
+    const pipelineStatus = deriveEmailFinalStatus(brandLeads);
+    if (pipelineStatus) return pipelineStatus;
+  }
+
+  // Manual history in column I (e.g. "4/6 - Intro email sent")
+  return extractEmailStatusFromLegacy(legacyRaw);
 }
 
 export function classifyFinalStatus(finalStatus: string): BrandTrackerView["statusCategory"] {
@@ -211,8 +243,8 @@ export function buildBrandTrackerViews(
 
   for (const [key, brandRows] of rowsByBrand) {
     const brandActivities = activitiesForBrand(key, activities);
-    const finalStatus = deriveFinalStatus(key, activities, pipelineLeads);
     const legacyRaw = pickLegacyTextForBrand(brandRows);
+    const finalStatus = deriveFinalStatus(key, activities, pipelineLeads, legacyRaw);
     const legacyThread = parseLegacyComments(legacyRaw);
     const activityThread = buildCommentThread(brandActivities);
     const commentThread = mergeCommentThreads(legacyThread, activityThread);
@@ -255,14 +287,27 @@ export async function syncBrandTrackerToSheet(options?: {
     : views;
 
   const updates: { rowIndex: number; finalStatus: string; comments: string }[] = [];
-  for (const view of targetBrands) {
-    for (const rowIndex of view.rowIndices) {
-      updates.push({
-        rowIndex,
-        finalStatus: view.finalStatus,
-        comments: view.comments,
-      });
+  for (const row of trackerRows) {
+    if (options?.brand?.trim() && companyMatchScore(row.brand, options.brand) < 0.68) {
+      continue;
     }
+
+    const key = row.brand.trim();
+    const brandActivities = activitiesForBrand(key, activities);
+    const legacyThread = parseLegacyComments(row.legacyComments);
+    const finalStatus = deriveFinalStatus(
+      key,
+      activities,
+      pipelineLeads,
+      row.legacyComments
+    );
+    const comments = buildCommentsText(legacyThread, brandActivities);
+
+    updates.push({
+      rowIndex: row.rowIndex,
+      finalStatus,
+      comments,
+    });
   }
 
   await batchUpdateBrandTrackerFields(updates);
