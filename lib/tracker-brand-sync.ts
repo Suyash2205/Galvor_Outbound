@@ -6,7 +6,7 @@ import {
   fetchBrandTrackerRows,
   fetchActivities,
 } from "./outreach-sheets";
-import type { Lead, OutreachActivity, BrandTrackerSyncResult, BrandTrackerView } from "./types";
+import type { Lead, OutreachActivity, BrandTrackerSyncResult, BrandTrackerView, BrandTrackerComment } from "./types";
 
 const ORDINALS = ["", "1st", "2nd", "3rd", "4th", "5th", "6th"];
 
@@ -34,17 +34,25 @@ function leadsForBrand(brand: string, leads: Lead[]): Lead[] {
   return leads.filter((l) => companyMatchScore(l.companyName, brand) >= 0.68);
 }
 
+export function buildCommentThread(brandActivities: OutreachActivity[]): BrandTrackerComment[] {
+  const thread: BrandTrackerComment[] = [];
+  for (const a of brandActivities) {
+    const text = (a.polishedComment || a.comments).trim();
+    if (!text) continue;
+    thread.push({
+      date: formatShortDate(a.activityDate || a.loggedAt),
+      text,
+      category: a.category,
+    });
+  }
+  return thread;
+}
+
+/** Sheet column L — one comment per line */
 export function buildCommentsText(brandActivities: OutreachActivity[]): string {
-  if (!brandActivities.length) return "";
-  return brandActivities
-    .map((a) => {
-      const text = (a.polishedComment || a.comments).trim();
-      if (!text) return "";
-      const date = formatShortDate(a.activityDate || a.loggedAt);
-      return date ? `${date} - ${text}` : text;
-    })
-    .filter(Boolean)
-    .join(" / ");
+  return buildCommentThread(brandActivities)
+    .map((c) => (c.date ? `${c.date} - ${c.text}` : c.text))
+    .join("\n");
 }
 
 export function deriveFinalStatus(
@@ -103,6 +111,7 @@ export function buildBrandTrackerViews(
     if (!existing) {
       const brandActivities = activitiesForBrand(key, activities);
       const finalStatus = deriveFinalStatus(key, activities, pipelineLeads);
+      const commentThread = buildCommentThread(brandActivities);
       const comments = buildCommentsText(brandActivities);
       const lastActivity = brandActivities[brandActivities.length - 1];
 
@@ -111,6 +120,8 @@ export function buildBrandTrackerViews(
         industry: row.industry,
         finalStatus,
         comments,
+        commentThread,
+        latestComment: commentThread.length ? commentThread[commentThread.length - 1] : null,
         lastActivityDate: lastActivity
           ? lastActivity.activityDate || lastActivity.loggedAt.slice(0, 10)
           : "",

@@ -5,6 +5,7 @@ import { GalvorBrand } from "@/components/GalvorBrand";
 import {
   BRAND_TRACKER_TAB_GID,
   OUTREACH_TRACKER_SPREADSHEET_ID,
+  type BrandTrackerComment,
   type BrandTrackerStatusCategory,
   type BrandTrackerView,
 } from "@/lib/types";
@@ -12,7 +13,7 @@ import { signOut, useSession } from "next-auth/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 type StatusFilter = "all" | BrandTrackerStatusCategory;
-type SortKey = "brand" | "industry" | "status" | "lastActivity";
+type SortKey = "brand" | "industry" | "status" | "lastActivity" | "activeLeads";
 
 const STATUS_LABELS: Record<BrandTrackerStatusCategory, string> = {
   active: "Active lead",
@@ -21,6 +22,10 @@ const STATUS_LABELS: Record<BrandTrackerStatusCategory, string> = {
   other: "Other",
   empty: "No status",
 };
+
+function formatCommentLine(c: BrandTrackerComment): string {
+  return c.date ? `${c.date} - ${c.text}` : c.text;
+}
 
 export function TrackerDashboard() {
   const { data: session } = useSession();
@@ -34,6 +39,7 @@ export function TrackerDashboard() {
   const [industryFilter, setIndustryFilter] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("brand");
   const [sortAsc, setSortAsc] = useState(true);
+  const [expandedBrand, setExpandedBrand] = useState<string | null>(null);
 
   const showActionMessage = (msg: string) => {
     setActionMessage(msg);
@@ -70,18 +76,27 @@ export function TrackerDashboard() {
       if (statusFilter !== "all" && b.statusCategory !== statusFilter) return false;
       if (industryFilter && b.industry !== industryFilter) return false;
       if (!q) return true;
-      const haystack = [b.brand, b.industry, b.finalStatus, b.comments].join(" ").toLowerCase();
+      const threadText = (b.commentThread || []).map((c) => formatCommentLine(c)).join(" ");
+      const haystack = [b.brand, b.industry, b.finalStatus, threadText].join(" ").toLowerCase();
       return haystack.includes(q);
     });
 
     list = [...list].sort((a, b) => {
       let cmp = 0;
-      if (sortKey === "brand") cmp = a.brand.localeCompare(b.brand, undefined, { sensitivity: "base" });
-      else if (sortKey === "industry")
+      if (sortKey === "activeLeads") {
+        const aActive = a.statusCategory === "active" ? 0 : 1;
+        const bActive = b.statusCategory === "active" ? 0 : 1;
+        cmp = aActive - bActive;
+        if (cmp === 0) {
+          cmp = a.brand.localeCompare(b.brand, undefined, { sensitivity: "base" });
+        }
+      } else if (sortKey === "brand") {
+        cmp = a.brand.localeCompare(b.brand, undefined, { sensitivity: "base" });
+      } else if (sortKey === "industry") {
         cmp = (a.industry || "").localeCompare(b.industry || "", undefined, { sensitivity: "base" });
-      else if (sortKey === "status")
+      } else if (sortKey === "status") {
         cmp = a.finalStatus.localeCompare(b.finalStatus, undefined, { sensitivity: "base" });
-      else if (sortKey === "lastActivity") {
+      } else if (sortKey === "lastActivity") {
         const da = new Date(a.lastActivityDate || 0).getTime();
         const db = new Date(b.lastActivityDate || 0).getTime();
         cmp = da - db;
@@ -118,6 +133,10 @@ export function TrackerDashboard() {
     } finally {
       setSyncing(false);
     }
+  };
+
+  const toggleExpand = (brand: string) => {
+    setExpandedBrand((prev) => (prev === brand ? null : brand));
   };
 
   return (
@@ -217,6 +236,7 @@ export function TrackerDashboard() {
               <option value="industry">Industry</option>
               <option value="status">Status</option>
               <option value="lastActivity">Last activity</option>
+              <option value="activeLeads">Active leads</option>
             </select>
           </label>
           <button
@@ -224,7 +244,13 @@ export function TrackerDashboard() {
             className="btn btn--ghost"
             onClick={() => setSortAsc((v) => !v)}
           >
-            {sortAsc ? "A → Z" : "Z → A"}
+            {sortKey === "activeLeads"
+              ? sortAsc
+                ? "Active first"
+                : "Inactive first"
+              : sortAsc
+                ? "A → Z"
+                : "Z → A"}
           </button>
           <span className="lead-filters__count">
             {filtered.length} of {brands.length}
@@ -238,27 +264,80 @@ export function TrackerDashboard() {
         )}
 
         <div className="tracker-list">
-          {filtered.map((b) => (
-            <article key={b.brand} className={`tracker-card tracker-card--${b.statusCategory}`}>
-              <div className="tracker-card__head">
-                <div>
-                  <h3 className="tracker-card__brand">{b.brand}</h3>
-                  {b.industry && <p className="tracker-card__industry">{b.industry}</p>}
-                </div>
-                <span className={`tracker-status tracker-status--${b.statusCategory}`}>
-                  {b.finalStatus || STATUS_LABELS[b.statusCategory]}
-                </span>
-              </div>
-              {b.comments ? (
-                <p className="tracker-card__comments">{b.comments}</p>
-              ) : (
-                <p className="tracker-card__comments tracker-card__comments--empty">No comments yet</p>
-              )}
-              {b.lastActivityDate && (
-                <p className="tracker-card__meta">Last activity: {b.lastActivityDate}</p>
-              )}
-            </article>
-          ))}
+          {filtered.map((b) => {
+            const expanded = expandedBrand === b.brand;
+            const thread = b.commentThread || [];
+            const latest = b.latestComment;
+
+            return (
+              <article
+                key={b.brand}
+                className={`tracker-card tracker-card--${b.statusCategory}${expanded ? " tracker-card--expanded" : ""}`}
+              >
+                <button
+                  type="button"
+                  className="tracker-card__toggle"
+                  onClick={() => toggleExpand(b.brand)}
+                  aria-expanded={expanded}
+                >
+                  <div className="tracker-card__head">
+                    <div>
+                      <h3 className="tracker-card__brand">{b.brand}</h3>
+                      {b.industry && <p className="tracker-card__industry">{b.industry}</p>}
+                    </div>
+                    <span className={`tracker-status tracker-status--${b.statusCategory}`}>
+                      {b.finalStatus || STATUS_LABELS[b.statusCategory]}
+                    </span>
+                  </div>
+
+                  {!expanded && (
+                    <div className="tracker-card__preview">
+                      {latest ? (
+                        <p className="tracker-card__comments">{formatCommentLine(latest)}</p>
+                      ) : (
+                        <p className="tracker-card__comments tracker-card__comments--empty">
+                          No comments yet
+                        </p>
+                      )}
+                      {thread.length > 1 && (
+                        <p className="tracker-card__thread-hint">
+                          +{thread.length - 1} more — click to view thread
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {b.lastActivityDate && !expanded && (
+                    <p className="tracker-card__meta">Last activity: {b.lastActivityDate}</p>
+                  )}
+                </button>
+
+                {expanded && (
+                  <div className="tracker-card__thread">
+                    {thread.length === 0 ? (
+                      <p className="tracker-card__comments tracker-card__comments--empty">
+                        No comments yet
+                      </p>
+                    ) : (
+                      <ul className="tracker-thread">
+                        {thread.map((c, i) => (
+                          <li key={`${c.date}-${i}`} className="tracker-thread__item">
+                            <span className="tracker-thread__line">{formatCommentLine(c)}</span>
+                            {c.category && (
+                              <span className="tracker-thread__category">{c.category}</span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {b.lastActivityDate && (
+                      <p className="tracker-card__meta">Last activity: {b.lastActivityDate}</p>
+                    )}
+                  </div>
+                )}
+              </article>
+            );
+          })}
         </div>
       </main>
     </>

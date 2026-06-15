@@ -165,11 +165,19 @@ export type BrandTrackerStatusCategory =
   | "other"
   | "empty";
 
+export interface BrandTrackerComment {
+  date: string;
+  text: string;
+  category: string;
+}
+
 export interface BrandTrackerView {
   brand: string;
   industry: string;
   finalStatus: string;
   comments: string;
+  commentThread: BrandTrackerComment[];
+  latestComment: BrandTrackerComment | null;
   lastActivityDate: string;
   rowIndices: number[];
   hasActivityLog: boolean;
