@@ -1260,6 +1260,11 @@ input[type="checkbox"] {
   font-style: italic;
 }
 
+.tracker-card__comments--muted {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 .tracker-card__meta {
   margin: 8px 0 0;
   font-size: 11px;

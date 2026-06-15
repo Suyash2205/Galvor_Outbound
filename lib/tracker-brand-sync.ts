@@ -1,6 +1,5 @@
 import { bestCompanyMatch, companyMatchScore } from "./company-match";
-import { derivePipelineEmailFields } from "./outreach-sync";
-import { fetchAllLeads } from "./sheets";
+import { fetchAllLeads, stageToSentField } from "./sheets";
 import {
   batchUpdateBrandTrackerFields,
   fetchBrandTrackerRows,
@@ -32,6 +31,70 @@ function activitiesForBrand(brand: string, activities: OutreachActivity[]): Outr
 
 function leadsForBrand(brand: string, leads: Lead[]): Lead[] {
   return leads.filter((l) => companyMatchScore(l.companyName, brand) >= 0.68);
+}
+
+function isEmailOnlyLine(text: string): boolean {
+  const t = text.toLowerCase().trim();
+  return (
+    /intro\s+email\s+sent/.test(t) ||
+    /\d+(st|nd|rd|th)\s+email\s+sent/.test(t) ||
+    /only\s+outbound\s+email/.test(t) ||
+    /^email\s+\d+\s+sent/.test(t)
+  );
+}
+
+function filterWorkComments(thread: BrandTrackerComment[]): BrandTrackerComment[] {
+  return thread.filter((c) => !isEmailOnlyLine(c.text));
+}
+
+function getMaxEmailSentForLead(lead: Lead): { n: number; date: string } {
+  let maxN = 0;
+  let maxDate = "";
+
+  for (let n = 1; n <= 6; n++) {
+    const field = stageToSentField(String(n) as Lead["stage"]);
+    if (!field) continue;
+    const val = lead[field];
+    if (typeof val === "string" && val.trim()) {
+      maxN = n;
+      maxDate = formatShortDate(val);
+    }
+  }
+
+  if (maxN === 0) {
+    const stageNum = parseInt(lead.stage, 10);
+    if (!isNaN(stageNum) && stageNum >= 2) {
+      maxN = stageNum - 1;
+      const field = stageToSentField(String(maxN) as Lead["stage"]);
+      if (field) {
+        const val = lead[field];
+        if (typeof val === "string" && val.trim()) maxDate = formatShortDate(val);
+      }
+    }
+  }
+
+  return { n: maxN, date: maxDate };
+}
+
+function deriveEmailFinalStatus(brandLeads: Lead[]): string {
+  let maxN = 0;
+  let maxDate = "";
+
+  for (const lead of brandLeads) {
+    const { n, date } = getMaxEmailSentForLead(lead);
+    if (n > maxN) {
+      maxN = n;
+      maxDate = date;
+    } else if (n === maxN && date && !maxDate) {
+      maxDate = date;
+    }
+  }
+
+  if (maxN <= 0) return "";
+
+  const label =
+    maxN === 1 ? "Intro email sent" : `${ORDINALS[maxN] || `${maxN}th`} email sent`;
+  return maxDate ? `${maxDate} - ${label}` : label;
 }
 
 export function parseLegacyComments(raw: string): BrandTrackerComment[] {
@@ -77,13 +140,14 @@ export function buildCommentThread(brandActivities: OutreachActivity[]): BrandTr
   return thread;
 }
 
-/** Sheet column L — legacy (col I) first, then activity log, one per line */
+/** Sheet column L — work comments only (no intro/email-only lines) */
 export function buildCommentsText(
   legacyThread: BrandTrackerComment[],
   brandActivities: OutreachActivity[]
 ): string {
+  const workLegacy = filterWorkComments(legacyThread);
   const activityThread = buildCommentThread(brandActivities);
-  return [...legacyThread, ...activityThread]
+  return [...workLegacy, ...activityThread]
     .map((c) => (c.date ? `${c.date} - ${c.text}` : c.text))
     .join("\n");
 }
@@ -92,7 +156,7 @@ export function mergeCommentThreads(
   legacyThread: BrandTrackerComment[],
   activityThread: BrandTrackerComment[]
 ): BrandTrackerComment[] {
-  return [...legacyThread, ...activityThread];
+  return [...filterWorkComments(legacyThread), ...activityThread];
 }
 
 export function deriveFinalStatus(
@@ -101,6 +165,7 @@ export function deriveFinalStatus(
   pipelineLeads: Lead[]
 ): string {
   const brandActivities = activitiesForBrand(brand, activities);
+  // Active lead only when real outreach work was logged
   if (brandActivities.length > 0) return "Active lead";
 
   const brandLeads = leadsForBrand(brand, pipelineLeads);
@@ -114,17 +179,7 @@ export function deriveFinalStatus(
   );
   if (hasResponse) return "Response received but no work done";
 
-  let maxEmail = 0;
-  for (const lead of brandLeads) {
-    const fields = derivePipelineEmailFields(lead);
-    const match = fields.emailStatus.match(/Email (\d+) Sent/i);
-    if (match) maxEmail = Math.max(maxEmail, parseInt(match[1], 10));
-  }
-
-  if (maxEmail <= 0) return "";
-  if (maxEmail === 1) return "Only Outbound email Sent with no Response";
-  const ord = ORDINALS[maxEmail] || `${maxEmail}th`;
-  return `${ord} email sent`;
+  return deriveEmailFinalStatus(brandLeads);
 }
 
 export function classifyFinalStatus(finalStatus: string): BrandTrackerView["statusCategory"] {
@@ -132,7 +187,9 @@ export function classifyFinalStatus(finalStatus: string): BrandTrackerView["stat
   if (!s) return "empty";
   if (s.includes("active lead") || s.includes("active client")) return "active";
   if (s.includes("response received but no work")) return "response_no_work";
-  if (s.includes("email sent") || s.includes("outbound email")) return "email_only";
+  if (s.includes("intro email sent") || s.includes("email sent") || s.includes("outbound email")) {
+    return "email_only";
+  }
   return "other";
 }
 

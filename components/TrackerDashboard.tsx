@@ -294,9 +294,13 @@ export function TrackerDashboard() {
                     <div className="tracker-card__preview">
                       {latest ? (
                         <p className="tracker-card__comments">{formatCommentLine(latest)}</p>
+                      ) : b.finalStatus && b.statusCategory === "email_only" ? (
+                        <p className="tracker-card__comments tracker-card__comments--muted">
+                          Email outreach only — see status above
+                        </p>
                       ) : (
                         <p className="tracker-card__comments tracker-card__comments--empty">
-                          No comments yet
+                          No outreach comments yet
                         </p>
                       )}
                       {thread.length > 1 && (
