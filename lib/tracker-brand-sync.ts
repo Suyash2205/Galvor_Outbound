@@ -101,6 +101,20 @@ export function parseLegacyComments(raw: string): BrandTrackerComment[] {
   const text = raw.trim();
   if (!text || text === "0") return [];
 
+  const newlineLines = text
+    .split(/\n+/)
+    .map((p) => p.trim())
+    .filter((p) => p && p !== "0");
+  if (newlineLines.length > 1) {
+    return newlineLines.map((line) => {
+      const dated = line.match(/^(\d{1,2}\/\d{1,2})\s*-\s*(.+)$/);
+      if (dated) {
+        return { date: dated[1], text: dated[2].trim(), category: "Legacy" };
+      }
+      return { date: "", text: line, category: "Legacy" };
+    });
+  }
+
   const parts = text
     .split(/(?:\s*\/\s*)?(?=\d{1,2}\/\d{1,2}\s*-\s*)/)
     .map((p) => p.replace(/^\s*\/\s*/, "").trim())
@@ -117,10 +131,63 @@ export function parseLegacyComments(raw: string): BrandTrackerComment[] {
   });
 }
 
-function pickLegacyTextForBrand(rows: { legacyComments: string }[]): string {
-  const texts = rows
-    .map((r) => r.legacyComments?.trim())
-    .filter((t) => t && t !== "0");
+type TrackerLegacyRow = { legacyComments: string; sheetComments?: string };
+
+function legacySources(row: TrackerLegacyRow): string[] {
+  return [row.legacyComments, row.sheetComments]
+    .map((t) => t?.trim())
+    .filter((t): t is string => Boolean(t) && t !== "0");
+}
+
+/** Column I first; column L only when I is empty (avoids duplicating synced outreach lines). */
+function legacySourcesForThread(row: TrackerLegacyRow): string[] {
+  const legacy = row.legacyComments?.trim();
+  if (legacy && legacy !== "0") return [legacy];
+  const sheet = row.sheetComments?.trim();
+  if (sheet && sheet !== "0") return [sheet];
+  return [];
+}
+
+function hasLegacyWork(legacyRaw: string): boolean {
+  return filterWorkComments(parseLegacyComments(legacyRaw)).length > 0;
+}
+
+function rowHasLegacyWork(row: TrackerLegacyRow): boolean {
+  return legacySources(row).some((raw) => hasLegacyWork(raw));
+}
+
+function hasAnyWorkHistory(
+  brand: string,
+  activities: OutreachActivity[],
+  legacyRaw: string,
+  brandRows?: TrackerLegacyRow[]
+): boolean {
+  if (activitiesForBrand(brand, activities).length > 0) return true;
+  if (hasLegacyWork(legacyRaw)) return true;
+  if (brandRows?.some((r) => rowHasLegacyWork(r))) return true;
+  return false;
+}
+
+function collectLegacyThreads(brandRows: TrackerLegacyRow[]): BrandTrackerComment[] {
+  const seen = new Set<string>();
+  const thread: BrandTrackerComment[] = [];
+
+  for (const row of brandRows) {
+    for (const raw of legacySourcesForThread(row)) {
+      for (const c of parseLegacyComments(raw)) {
+        const key = `${c.date}|${c.text}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        thread.push(c);
+      }
+    }
+  }
+
+  return thread;
+}
+
+function pickLegacyTextForBrand(rows: TrackerLegacyRow[]): string {
+  const texts = rows.flatMap((r) => legacySourcesForThread(r));
   if (!texts.length) return "";
   // Prefer the longest entry — usually the most complete history for the brand
   return texts.sort((a, b) => b.length - a.length)[0];
@@ -190,10 +257,11 @@ export function deriveFinalStatus(
   brand: string,
   activities: OutreachActivity[],
   pipelineLeads: Lead[],
-  legacyRaw = ""
+  legacyRaw = "",
+  brandRows?: TrackerLegacyRow[]
 ): string {
-  const brandActivities = activitiesForBrand(brand, activities);
-  if (brandActivities.length > 0) return "Active lead";
+  // Active lead: outreach app log OR real work notes in column I
+  if (hasAnyWorkHistory(brand, activities, legacyRaw, brandRows)) return "Active lead";
 
   const brandLeads = leadsForBrand(brand, pipelineLeads);
 
@@ -244,8 +312,14 @@ export function buildBrandTrackerViews(
   for (const [key, brandRows] of rowsByBrand) {
     const brandActivities = activitiesForBrand(key, activities);
     const legacyRaw = pickLegacyTextForBrand(brandRows);
-    const finalStatus = deriveFinalStatus(key, activities, pipelineLeads, legacyRaw);
-    const legacyThread = parseLegacyComments(legacyRaw);
+    const legacyThread = collectLegacyThreads(brandRows);
+    const finalStatus = deriveFinalStatus(
+      key,
+      activities,
+      pipelineLeads,
+      legacyRaw,
+      brandRows
+    );
     const activityThread = buildCommentThread(brandActivities);
     const commentThread = mergeCommentThreads(legacyThread, activityThread);
     const comments = buildCommentsText(legacyThread, brandActivities);
@@ -260,9 +334,12 @@ export function buildBrandTrackerViews(
       latestComment: commentThread.length ? commentThread[commentThread.length - 1] : null,
       lastActivityDate: lastActivity
         ? lastActivity.activityDate || lastActivity.loggedAt.slice(0, 10)
-        : "",
+        : commentThread.length
+          ? commentThread[commentThread.length - 1].date
+          : "",
       rowIndices: brandRows.map((r) => r.rowIndex),
-      hasActivityLog: brandActivities.length > 0,
+      hasActivityLog:
+        brandActivities.length > 0 || brandRows.some((r) => rowHasLegacyWork(r)),
       statusCategory: classifyFinalStatus(finalStatus),
     });
   }
@@ -294,12 +371,16 @@ export async function syncBrandTrackerToSheet(options?: {
 
     const key = row.brand.trim();
     const brandActivities = activitiesForBrand(key, activities);
-    const legacyThread = parseLegacyComments(row.legacyComments);
+    const brandRowsForKey = trackerRows.filter(
+      (r) => companyMatchScore(r.brand, key) >= 0.68
+    );
+    const legacyThread = collectLegacyThreads(brandRowsForKey);
     const finalStatus = deriveFinalStatus(
       key,
       activities,
       pipelineLeads,
-      row.legacyComments
+      row.legacyComments || row.sheetComments,
+      brandRowsForKey
     );
     const comments = buildCommentsText(legacyThread, brandActivities);
 

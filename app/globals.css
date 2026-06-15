@@ -1271,6 +1271,11 @@ input[type="checkbox"] {
   color: var(--text-muted);
 }
 
+.tracker-card__close {
+  margin-top: 12px;
+  font-size: 13px;
+}
+
 @media (max-width: 760px) {
   .tracker-stats {
     grid-template-columns: 1fr 1fr;

@@ -337,6 +337,13 @@ export function TrackerDashboard() {
                     {b.lastActivityDate && (
                       <p className="tracker-card__meta">Last activity: {b.lastActivityDate}</p>
                     )}
+                    <button
+                      type="button"
+                      className="tracker-card__close btn btn--ghost"
+                      onClick={() => setExpandedBrand(null)}
+                    >
+                      Close thread
+                    </button>
                   </div>
                 )}
               </article>

@@ -106,6 +106,7 @@ export interface TrackerContactRow {
   industry: string;
   email: string;
   legacyComments: string;
+  sheetComments: string;
   emailStatus: string;
   lastEmailDate: string;
   emailOutcome: string;
@@ -133,6 +134,7 @@ export async function fetchBrandTrackerRows(): Promise<TrackerContactRow[]> {
       industry: getCol(row, colMap, "category"),
       email: getCol(row, colMap, "email"),
       legacyComments: getCol(row, colMap, "legacyComments") || row[TRACKER_LEGACY_COLUMN_INDEX]?.trim() || "",
+      sheetComments: getCol(row, colMap, "comments"),
       emailStatus: getCol(row, colMap, "emailStatus"),
       lastEmailDate: getCol(row, colMap, "lastEmailDate"),
       emailOutcome: getCol(row, colMap, "emailOutcome"),
