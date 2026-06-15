@@ -1,8 +1,12 @@
+/** Column I (0-based index 8) — historical notes before Activity Log */
+export const TRACKER_LEGACY_COLUMN_INDEX = 8;
+
 export type TrackerColumnKey =
   | "brand"
   | "category"
   | "email"
   | "phone"
+  | "legacyComments"
   | "finalStatus"
   | "comments"
   | "emailStatus"
@@ -14,6 +18,7 @@ const HEADER_ALIASES: Record<TrackerColumnKey, string[]> = {
   category: ["category", "industry"],
   email: ["email address", "email"],
   phone: ["phone number", "phone"],
+  legacyComments: ["icp persona"],
   finalStatus: ["final status"],
   comments: ["comments"],
   emailStatus: ["email status"],
@@ -34,6 +39,9 @@ export function buildColumnMap(headerRow: string[]): TrackerColumnMap {
     const idx = normalized.findIndex((h) => aliases.some((a) => h === a || h.includes(a)));
     if (idx >= 0) map[key] = idx;
   }
+
+  // Column I — historical notes (always index 8, per sheet layout)
+  map.legacyComments = TRACKER_LEGACY_COLUMN_INDEX;
 
   return map;
 }

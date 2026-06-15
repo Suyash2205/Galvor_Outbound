@@ -34,6 +34,35 @@ function leadsForBrand(brand: string, leads: Lead[]): Lead[] {
   return leads.filter((l) => companyMatchScore(l.companyName, brand) >= 0.68);
 }
 
+export function parseLegacyComments(raw: string): BrandTrackerComment[] {
+  const text = raw.trim();
+  if (!text || text === "0") return [];
+
+  const parts = text
+    .split(/(?:\s*\/\s*)?(?=\d{1,2}\/\d{1,2}\s*-\s*)/)
+    .map((p) => p.replace(/^\s*\/\s*/, "").trim())
+    .filter((p) => p && p !== "0");
+
+  if (!parts.length) return [];
+
+  return parts.map((part) => {
+    const dated = part.match(/^(\d{1,2}\/\d{1,2})\s*-\s*(.+)$/);
+    if (dated) {
+      return { date: dated[1], text: dated[2].trim(), category: "Legacy" };
+    }
+    return { date: "", text: part, category: "Legacy" };
+  });
+}
+
+function pickLegacyTextForBrand(rows: { legacyComments: string }[]): string {
+  const texts = rows
+    .map((r) => r.legacyComments?.trim())
+    .filter((t) => t && t !== "0");
+  if (!texts.length) return "";
+  // Prefer the longest entry — usually the most complete history for the brand
+  return texts.sort((a, b) => b.length - a.length)[0];
+}
+
 export function buildCommentThread(brandActivities: OutreachActivity[]): BrandTrackerComment[] {
   const thread: BrandTrackerComment[] = [];
   for (const a of brandActivities) {
@@ -48,11 +77,22 @@ export function buildCommentThread(brandActivities: OutreachActivity[]): BrandTr
   return thread;
 }
 
-/** Sheet column L — one comment per line */
-export function buildCommentsText(brandActivities: OutreachActivity[]): string {
-  return buildCommentThread(brandActivities)
+/** Sheet column L — legacy (col I) first, then activity log, one per line */
+export function buildCommentsText(
+  legacyThread: BrandTrackerComment[],
+  brandActivities: OutreachActivity[]
+): string {
+  const activityThread = buildCommentThread(brandActivities);
+  return [...legacyThread, ...activityThread]
     .map((c) => (c.date ? `${c.date} - ${c.text}` : c.text))
     .join("\n");
+}
+
+export function mergeCommentThreads(
+  legacyThread: BrandTrackerComment[],
+  activityThread: BrandTrackerComment[]
+): BrandTrackerComment[] {
+  return [...legacyThread, ...activityThread];
 }
 
 export function deriveFinalStatus(
@@ -101,41 +141,44 @@ export function buildBrandTrackerViews(
   activities: OutreachActivity[],
   pipelineLeads: Lead[]
 ): BrandTrackerView[] {
-  const byBrand = new Map<string, BrandTrackerView>();
-
+  const rowsByBrand = new Map<string, typeof trackerRows>();
   for (const row of trackerRows) {
     const key = row.brand.trim();
     if (!key) continue;
-
-    const existing = byBrand.get(key);
-    if (!existing) {
-      const brandActivities = activitiesForBrand(key, activities);
-      const finalStatus = deriveFinalStatus(key, activities, pipelineLeads);
-      const commentThread = buildCommentThread(brandActivities);
-      const comments = buildCommentsText(brandActivities);
-      const lastActivity = brandActivities[brandActivities.length - 1];
-
-      byBrand.set(key, {
-        brand: key,
-        industry: row.industry,
-        finalStatus,
-        comments,
-        commentThread,
-        latestComment: commentThread.length ? commentThread[commentThread.length - 1] : null,
-        lastActivityDate: lastActivity
-          ? lastActivity.activityDate || lastActivity.loggedAt.slice(0, 10)
-          : "",
-        rowIndices: [row.rowIndex],
-        hasActivityLog: brandActivities.length > 0,
-        statusCategory: classifyFinalStatus(finalStatus),
-      });
-    } else {
-      if (!existing.industry && row.industry) existing.industry = row.industry;
-      existing.rowIndices.push(row.rowIndex);
-    }
+    const list = rowsByBrand.get(key) || [];
+    list.push(row);
+    rowsByBrand.set(key, list);
   }
 
-  return [...byBrand.values()].sort((a, b) =>
+  const views: BrandTrackerView[] = [];
+
+  for (const [key, brandRows] of rowsByBrand) {
+    const brandActivities = activitiesForBrand(key, activities);
+    const finalStatus = deriveFinalStatus(key, activities, pipelineLeads);
+    const legacyRaw = pickLegacyTextForBrand(brandRows);
+    const legacyThread = parseLegacyComments(legacyRaw);
+    const activityThread = buildCommentThread(brandActivities);
+    const commentThread = mergeCommentThreads(legacyThread, activityThread);
+    const comments = buildCommentsText(legacyThread, brandActivities);
+    const lastActivity = brandActivities[brandActivities.length - 1];
+
+    views.push({
+      brand: key,
+      industry: brandRows.find((r) => r.industry)?.industry || "",
+      finalStatus,
+      comments,
+      commentThread,
+      latestComment: commentThread.length ? commentThread[commentThread.length - 1] : null,
+      lastActivityDate: lastActivity
+        ? lastActivity.activityDate || lastActivity.loggedAt.slice(0, 10)
+        : "",
+      rowIndices: brandRows.map((r) => r.rowIndex),
+      hasActivityLog: brandActivities.length > 0,
+      statusCategory: classifyFinalStatus(finalStatus),
+    });
+  }
+
+  return views.sort((a, b) =>
     a.brand.localeCompare(b.brand, undefined, { sensitivity: "base" })
   );
 }

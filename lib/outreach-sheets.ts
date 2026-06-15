@@ -3,6 +3,7 @@ import {
   buildColumnMap,
   colLetter,
   getCol,
+  TRACKER_LEGACY_COLUMN_INDEX,
   type TrackerColumnMap,
 } from "./tracker-headers";
 import {
@@ -104,6 +105,7 @@ export interface TrackerContactRow {
   brand: string;
   industry: string;
   email: string;
+  legacyComments: string;
   emailStatus: string;
   lastEmailDate: string;
   emailOutcome: string;
@@ -130,6 +132,7 @@ export async function fetchBrandTrackerRows(): Promise<TrackerContactRow[]> {
       brand,
       industry: getCol(row, colMap, "category"),
       email: getCol(row, colMap, "email"),
+      legacyComments: getCol(row, colMap, "legacyComments") || row[TRACKER_LEGACY_COLUMN_INDEX]?.trim() || "",
       emailStatus: getCol(row, colMap, "emailStatus"),
       lastEmailDate: getCol(row, colMap, "lastEmailDate"),
       emailOutcome: getCol(row, colMap, "emailOutcome"),
