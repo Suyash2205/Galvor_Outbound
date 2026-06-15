@@ -1,5 +1,6 @@
 import { requireAuth } from "@/lib/auth";
 import { appendActivity, fetchActivities } from "@/lib/outreach-sheets";
+import { syncBrandTrackerToSheet } from "@/lib/tracker-brand-sync";
 import { OUTREACH_CATEGORIES, type OutreachCategory } from "@/lib/types";
 import { NextResponse } from "next/server";
 
@@ -54,6 +55,12 @@ export async function POST(req: Request) {
       polishedComment: polishedComment?.trim(),
       loggedBy: session.user!.email!,
     });
+
+    try {
+      await syncBrandTrackerToSheet({ brand: brand.trim() });
+    } catch {
+      // Activity saved; sheet sync can be retried manually
+    }
 
     return NextResponse.json({ activity });
   } catch (err) {

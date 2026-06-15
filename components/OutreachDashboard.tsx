@@ -1,7 +1,9 @@
 "use client";
 
+import { AppNav } from "@/components/AppNav";
 import { GalvorBrand } from "@/components/GalvorBrand";
 import {
+  BRAND_TRACKER_TAB_GID,
   OUTREACH_CATEGORIES,
   OUTREACH_TRACKER_SPREADSHEET_ID,
   type OutreachActivity,
@@ -9,7 +11,6 @@ import {
   type OutreachCategory,
 } from "@/lib/types";
 import { signOut, useSession } from "next-auth/react";
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 function todayInputValue(): string {
@@ -33,6 +34,7 @@ export function OutreachDashboard() {
   const [saving, setSaving] = useState(false);
   const [polishing, setPolishing] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [brandSyncing, setBrandSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<string | null>(null);
   const [draftLoading, setDraftLoading] = useState(false);
   const [draftSubject, setDraftSubject] = useState("");
@@ -147,6 +149,23 @@ export function OutreachDashboard() {
     }
   };
 
+  const syncBrandTracker = async () => {
+    setBrandSyncing(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/tracker/sync", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Brand tracker sync failed");
+      showActionMessage(
+        `Tracker updated: ${data.brands} brands (${data.activeLeads} active leads)`
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Brand tracker sync failed");
+    } finally {
+      setBrandSyncing(false);
+    }
+  };
+
   const generateDraft = async () => {
     setDraftLoading(true);
     setError(null);
@@ -178,14 +197,12 @@ export function OutreachDashboard() {
           <span className="brand-badge">Outreach Tracker</span>
         </div>
         <div className="header-actions">
-          <Link href="/dashboard" className="btn btn--ghost">
-            Pipeline
-          </Link>
+          <AppNav active="outreach" />
           <button className="btn btn--ghost" onClick={() => loadData()} disabled={loading}>
             Refresh
           </button>
           <a
-            href={`https://docs.google.com/spreadsheets/d/${OUTREACH_TRACKER_SPREADSHEET_ID}/edit`}
+            href={`https://docs.google.com/spreadsheets/d/${OUTREACH_TRACKER_SPREADSHEET_ID}/edit?gid=${BRAND_TRACKER_TAB_GID}#gid=${BRAND_TRACKER_TAB_GID}`}
             target="_blank"
             rel="noreferrer"
             className="btn btn--ghost"
@@ -295,6 +312,23 @@ export function OutreachDashboard() {
                   {saving ? "Saving…" : "Save log"}
                 </button>
               </div>
+            </div>
+          </section>
+
+          <section className="outreach-card">
+            <h2 className="outreach-card__title">Final status &amp; comments</h2>
+            <p className="outreach-card__hint">
+              Updates column K (Final Status) and L (Comments) on the Tracker tab. Active lead if
+              any log exists; otherwise email stage from pipeline or response-with-no-work.
+            </p>
+            <div className="outreach-form__actions">
+              <button
+                className="btn btn--primary"
+                onClick={syncBrandTracker}
+                disabled={brandSyncing}
+              >
+                {brandSyncing ? "Syncing…" : "Sync K & L to sheet"}
+              </button>
             </div>
           </section>
 

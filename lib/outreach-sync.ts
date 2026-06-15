@@ -1,6 +1,6 @@
 import { bestCompanyMatch, normalizeEmail } from "./company-match";
 import { fetchAllLeads, stageToSentField } from "./sheets";
-import { batchUpdateTrackerEmailFields, fetchTrackerContactRows } from "./outreach-sheets";
+import { batchUpdateTrackerEmailFields, fetchBrandTrackerRows } from "./outreach-sheets";
 import type { Lead, PipelineSyncResult } from "./types";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -72,7 +72,7 @@ export async function syncPipelineToTracker(options?: {
   overwrite?: boolean;
 }): Promise<PipelineSyncResult> {
   const [trackerRows, pipelineLeads] = await Promise.all([
-    fetchTrackerContactRows(),
+    fetchBrandTrackerRows(),
     fetchAllLeads({ fresh: true }),
   ]);
 

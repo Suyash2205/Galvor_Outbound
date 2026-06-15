@@ -105,8 +105,12 @@ export const DEFAULT_CLOSING_COPY =
 export const OUTREACH_TRACKER_SPREADSHEET_ID =
   "13rGwhOjtNfYhjWDMZkIE_Iq3c6cY237g9JCKYYBGCl0";
 
-/** Main contacts tab — row 3 = headers, data from row 4 */
-export const OUTREACH_TRACKER_TAB_NAME = "Copy of Galvor - Outreach Tracker";
+/** Brand-level tracker tab (gid 1535921837) — row 3 = headers, data from row 4 */
+export const BRAND_TRACKER_TAB_NAME = "Tracker";
+export const BRAND_TRACKER_TAB_GID = "1535921837";
+
+/** Legacy name — contacts may live on Tracker or New Contacts */
+export const OUTREACH_TRACKER_TAB_NAME = "Tracker";
 
 export const OUTREACH_ACTIVITY_TAB_NAME = "Activity Log";
 
@@ -152,4 +156,30 @@ export interface PipelineSyncResult {
   unmatched: string[];
   matchedByEmail: number;
   matchedByCompany: number;
+}
+
+export type BrandTrackerStatusCategory =
+  | "active"
+  | "response_no_work"
+  | "email_only"
+  | "other"
+  | "empty";
+
+export interface BrandTrackerView {
+  brand: string;
+  industry: string;
+  finalStatus: string;
+  comments: string;
+  lastActivityDate: string;
+  rowIndices: number[];
+  hasActivityLog: boolean;
+  statusCategory: BrandTrackerStatusCategory;
+}
+
+export interface BrandTrackerSyncResult {
+  updated: number;
+  brands: number;
+  activeLeads: number;
+  emailOnly: number;
+  responseNoWork: number;
 }

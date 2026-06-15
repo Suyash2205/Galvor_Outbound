@@ -1,26 +1,22 @@
 import { google } from "googleapis";
 import {
+  buildColumnMap,
+  colLetter,
+  getCol,
+  type TrackerColumnMap,
+} from "./tracker-headers";
+import {
   OUTREACH_ACTIVITY_HEADERS,
   OUTREACH_ACTIVITY_TAB_NAME,
   OUTREACH_CATEGORIES,
-  OUTREACH_TRACKER_TAB_NAME,
+  BRAND_TRACKER_TAB_NAME,
   type OutreachActivity,
   type OutreachBrand,
   type OutreachCategory,
 } from "./types";
 
-const TRACKER_HEADER_ROW = 3;
-const TRACKER_DATA_START = 4;
-
-/** Column indices (0-based) on the main tracker tab (row 3 headers) */
-export const TRACKER_COL = {
-  brand: 0, // A — Company / Brand
-  email: 10, // K — Email Address
-  phone: 11, // L — Phone Number
-  emailStatus: 12, // M — Email Status
-  lastEmailDate: 13, // N — Last Email Date
-  emailOutcome: 14, // O — Email Outcome
-} as const;
+const HEADER_ROW = 3;
+const DATA_START = 4;
 
 function getAuth() {
   const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
@@ -42,53 +38,58 @@ function getSpreadsheetId() {
     process.env.GOOGLE_OUTREACH_TRACKER_SPREADSHEET_ID ||
     process.env.OUTREACH_TRACKER_SPREADSHEET_ID;
   if (!id) {
-    throw new Error(
-      "GOOGLE_OUTREACH_TRACKER_SPREADSHEET_ID is not configured."
-    );
+    throw new Error("GOOGLE_OUTREACH_TRACKER_SPREADSHEET_ID is not configured.");
   }
   return id;
 }
 
-function getTrackerTabName() {
-  return process.env.OUTREACH_TRACKER_TAB_NAME || OUTREACH_TRACKER_TAB_NAME;
-}
-
-function colLetter(index: number): string {
-  let n = index + 1;
-  let s = "";
-  while (n > 0) {
-    const rem = (n - 1) % 26;
-    s = String.fromCharCode(65 + rem) + s;
-    n = Math.floor((n - 1) / 26);
-  }
-  return s;
-}
-
-async function resolveTrackerTab(): Promise<string> {
-  const configured = getTrackerTabName();
+async function listTabNames(): Promise<string[]> {
   const auth = getAuth();
   const sheets = google.sheets({ version: "v4", auth });
-  const spreadsheetId = getSpreadsheetId();
-  const meta = await sheets.spreadsheets.get({ spreadsheetId });
-  const titles = meta.data.sheets?.map((s) => s.properties?.title || "") || [];
-  if (titles.includes(configured)) return configured;
-  return titles[0] || configured;
+  const meta = await sheets.spreadsheets.get({ spreadsheetId: getSpreadsheetId() });
+  return meta.data.sheets?.map((s) => s.properties?.title || "") || [];
+}
+
+async function resolveTab(preferred: string[]): Promise<string> {
+  const tabs = await listTabNames();
+  for (const name of preferred) {
+    if (tabs.includes(name)) return name;
+  }
+  return tabs[0] || preferred[0];
+}
+
+async function getTrackerTab(): Promise<string> {
+  const envTab = process.env.OUTREACH_TRACKER_TAB_NAME;
+  const preferred = [envTab, BRAND_TRACKER_TAB_NAME, "Tracker", "New Contacts"].filter(
+    Boolean
+  ) as string[];
+  return resolveTab(preferred);
+}
+
+async function fetchHeaderMap(tab: string): Promise<TrackerColumnMap> {
+  const auth = getAuth();
+  const sheets = google.sheets({ version: "v4", auth });
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: getSpreadsheetId(),
+    range: `${tab}!A${HEADER_ROW}:AZ${HEADER_ROW}`,
+  });
+  return buildColumnMap((res.data.values?.[0] as string[]) || []);
 }
 
 export async function fetchTrackerBrands(): Promise<OutreachBrand[]> {
+  const tab = await getTrackerTab();
+  const colMap = await fetchHeaderMap(tab);
   const auth = getAuth();
   const sheets = google.sheets({ version: "v4", auth });
-  const spreadsheetId = getSpreadsheetId();
-  const tab = await resolveTrackerTab();
 
   const res = await sheets.spreadsheets.values.get({
-    spreadsheetId,
-    range: `${tab}!A${TRACKER_DATA_START}:A`,
+    spreadsheetId: getSpreadsheetId(),
+    range: `${tab}!A${DATA_START}:B`,
   });
 
   const counts = new Map<string, number>();
   for (const row of res.data.values || []) {
-    const brand = (row[0] as string | undefined)?.trim();
+    const brand = getCol(row as string[], colMap, "brand");
     if (!brand) continue;
     counts.set(brand, (counts.get(brand) || 0) + 1);
   }
@@ -101,60 +102,98 @@ export async function fetchTrackerBrands(): Promise<OutreachBrand[]> {
 export interface TrackerContactRow {
   rowIndex: number;
   brand: string;
+  industry: string;
   email: string;
   emailStatus: string;
   lastEmailDate: string;
   emailOutcome: string;
 }
 
-export async function fetchTrackerContactRows(): Promise<TrackerContactRow[]> {
+export async function fetchBrandTrackerRows(): Promise<TrackerContactRow[]> {
+  const tab = await getTrackerTab();
+  const colMap = await fetchHeaderMap(tab);
   const auth = getAuth();
   const sheets = google.sheets({ version: "v4", auth });
-  const spreadsheetId = getSpreadsheetId();
-  const tab = await resolveTrackerTab();
 
   const res = await sheets.spreadsheets.values.get({
-    spreadsheetId,
-    range: `${tab}!A${TRACKER_DATA_START}:O`,
+    spreadsheetId: getSpreadsheetId(),
+    range: `${tab}!A${DATA_START}:AZ`,
   });
 
   const rows: TrackerContactRow[] = [];
   for (let i = 0; i < (res.data.values || []).length; i++) {
     const row = res.data.values![i] as string[];
-    const brand = row[TRACKER_COL.brand]?.trim() || "";
+    const brand = getCol(row, colMap, "brand");
     if (!brand) continue;
     rows.push({
-      rowIndex: TRACKER_DATA_START + i,
+      rowIndex: DATA_START + i,
       brand,
-      email: row[TRACKER_COL.email]?.trim() || "",
-      emailStatus: row[TRACKER_COL.emailStatus]?.trim() || "",
-      lastEmailDate: row[TRACKER_COL.lastEmailDate]?.trim() || "",
-      emailOutcome: row[TRACKER_COL.emailOutcome]?.trim() || "",
+      industry: getCol(row, colMap, "category"),
+      email: getCol(row, colMap, "email"),
+      emailStatus: getCol(row, colMap, "emailStatus"),
+      lastEmailDate: getCol(row, colMap, "lastEmailDate"),
+      emailOutcome: getCol(row, colMap, "emailOutcome"),
     });
   }
   return rows;
 }
+
+/** @deprecated alias */
+export const fetchTrackerContactRows = fetchBrandTrackerRows;
 
 export async function batchUpdateTrackerEmailFields(
   updates: { rowIndex: number; emailStatus: string; lastEmailDate: string; emailOutcome: string }[]
 ): Promise<void> {
   if (!updates.length) return;
 
+  const tab = await getTrackerTab();
+  const colMap = await fetchHeaderMap(tab);
+  const statusIdx = colMap.emailStatus;
+  const outcomeIdx = colMap.emailOutcome;
+  if (statusIdx === undefined || outcomeIdx === undefined) {
+    throw new Error("Email Status / Email Outcome columns not found on tracker sheet.");
+  }
+
   const auth = getAuth();
   const sheets = google.sheets({ version: "v4", auth });
-  const spreadsheetId = getSpreadsheetId();
-  const tab = await resolveTrackerTab();
-
-  const mCol = colLetter(TRACKER_COL.emailStatus);
-  const oCol = colLetter(TRACKER_COL.emailOutcome);
+  const startCol = colLetter(statusIdx);
+  const endCol = colLetter(outcomeIdx);
 
   await sheets.spreadsheets.values.batchUpdate({
-    spreadsheetId,
+    spreadsheetId: getSpreadsheetId(),
     requestBody: {
       valueInputOption: "RAW",
       data: updates.map((u) => ({
-        range: `${tab}!${mCol}${u.rowIndex}:${oCol}${u.rowIndex}`,
+        range: `${tab}!${startCol}${u.rowIndex}:${endCol}${u.rowIndex}`,
         values: [[u.emailStatus, u.lastEmailDate, u.emailOutcome]],
+      })),
+    },
+  });
+}
+
+export async function batchUpdateBrandTrackerFields(
+  updates: { rowIndex: number; finalStatus: string; comments: string }[]
+): Promise<void> {
+  if (!updates.length) return;
+
+  const tab = await getTrackerTab();
+  const colMap = await fetchHeaderMap(tab);
+  const statusIdx = colMap.finalStatus;
+  const commentsIdx = colMap.comments;
+  if (statusIdx === undefined || commentsIdx === undefined) {
+    throw new Error("Final Status / Comments columns not found on tracker sheet.");
+  }
+
+  const auth = getAuth();
+  const sheets = google.sheets({ version: "v4", auth });
+
+  await sheets.spreadsheets.values.batchUpdate({
+    spreadsheetId: getSpreadsheetId(),
+    requestBody: {
+      valueInputOption: "RAW",
+      data: updates.map((u) => ({
+        range: `${tab}!${colLetter(statusIdx)}${u.rowIndex}:${colLetter(commentsIdx)}${u.rowIndex}`,
+        values: [[u.finalStatus, u.comments]],
       })),
     },
   });
@@ -304,6 +343,5 @@ export async function appendActivity(input: {
 }
 
 export function getOutreachTrackerSheetUrl(): string {
-  const id = getSpreadsheetId();
-  return `https://docs.google.com/spreadsheets/d/${id}/edit`;
+  return `https://docs.google.com/spreadsheets/d/${getSpreadsheetId()}/edit?gid=1535921837`;
 }
