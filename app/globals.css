@@ -80,18 +80,75 @@ input[type="checkbox"] {
 
 /* Layout */
 .app-header {
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
-  padding: 0 32px;
-  height: 60px;
+  padding: 0 24px;
+  height: 56px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16px;
   position: sticky;
   top: 0;
   z-index: 100;
   box-shadow: var(--shadow-sm);
+}
+
+.app-header__start {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  min-width: 0;
+}
+
+.app-header__end {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+.app-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 16px;
+  border-right: 1px solid var(--border);
+}
+
+.app-header__user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.app-header__email {
+  font-size: 12px;
+  color: var(--text-muted);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.page-head {
+  margin-bottom: 24px;
+}
+
+.page-head__title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.page-head__subtitle {
+  font-size: 14px;
+  color: var(--text-secondary);
+  max-width: 640px;
+  line-height: 1.5;
 }
 
 .app-main {
@@ -171,38 +228,29 @@ input[type="checkbox"] {
 .app-nav {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
+  gap: 2px;
+  height: 100%;
 }
 
 .app-nav__link {
-  padding: 6px 12px;
+  padding: 6px 14px;
   font-size: 13px;
   font-weight: 600;
   color: var(--text-muted);
-  border-radius: calc(var(--r) - 2px);
+  border-radius: var(--r-full);
   text-decoration: none;
   transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
 }
 
 .app-nav__link:hover {
   color: var(--text);
-  background: #fff;
+  background: var(--bg-subtle);
 }
 
 .app-nav__link--active {
   color: var(--accent);
-  background: #fff;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
-}
-
-.header-email {
-  font-size: 12px;
-  color: var(--text-muted);
-  padding: 0 4px;
+  background: var(--accent-soft);
 }
 
 /* Tabs */
@@ -572,6 +620,11 @@ input[type="checkbox"] {
   background: var(--surface);
   border-color: var(--border-strong);
   color: var(--text);
+}
+
+.btn--sm {
+  padding: 5px 11px;
+  font-size: 12px;
 }
 
 /* Status badges */
@@ -990,6 +1043,33 @@ input[type="checkbox"] {
   color: var(--text-muted);
 }
 
+.outreach-sync-group {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.outreach-sync-group__block {
+  padding: 14px 16px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+}
+
+.outreach-sync-group__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.outreach-sync-group__desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+  line-height: 1.45;
+}
+
 .outreach-form {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1277,6 +1357,36 @@ input[type="checkbox"] {
 }
 
 @media (max-width: 760px) {
+  .app-header {
+    height: auto;
+    min-height: 56px;
+    padding: 10px 16px;
+    flex-wrap: wrap;
+  }
+
+  .app-header__start {
+    flex: 1 1 100%;
+    justify-content: space-between;
+  }
+
+  .app-header__end {
+    flex: 1 1 100%;
+    justify-content: space-between;
+  }
+
+  .app-header__actions {
+    border-right: none;
+    padding-right: 0;
+  }
+
+  .app-header__email {
+    display: none;
+  }
+
+  .app-main {
+    padding: 20px 16px 48px;
+  }
+
   .tracker-stats {
     grid-template-columns: 1fr 1fr;
   }

@@ -1,7 +1,7 @@
 "use client";
 
-import { GalvorBrand } from "@/components/GalvorBrand";
-import { AppNav } from "@/components/AppNav";
+import { AppHeader } from "@/components/AppHeader";
+import { PageHead } from "@/components/PageHead";
 import { ImportEmail1Modal } from "@/components/ImportEmail1Modal";
 import { LeadSendProgress, type RowSendState } from "@/components/LeadSendProgress";
 import { PreviewModal } from "@/components/PreviewModal";
@@ -11,7 +11,6 @@ import { needsEmail1Import } from "@/lib/lead-import";
 import type { JobPhase } from "@/lib/lead-job";
 import type { EmailContent, Lead, LeadStage } from "@/lib/types";
 import { STAGE_TABS, SHEET_TAB_GID } from "@/lib/types";
-import { signOut, useSession } from "next-auth/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const SPREADSHEET_ID = "1-nZCTRbeZCLgUPA91k37QlFHbL99sIKIdIUSB9tbmdc";
@@ -57,7 +56,6 @@ interface MovedLeadInfo {
 }
 
 export function Dashboard() {
-  const { data: session } = useSession();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [activeStage, setActiveStage] = useState<LeadStage>("1");
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -84,7 +82,6 @@ export function Dashboard() {
   const [importError, setImportError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [industrySort, setIndustrySort] = useState<IndustrySort>("default");
-  const [crmSyncing, setCrmSyncing] = useState(false);
   const crmSyncInFlight = useRef(false);
   const [replyAlert, setReplyAlert] = useState<MovedLeadInfo[] | null>(null);
   const replyCheckInFlight = useRef(false);
@@ -259,7 +256,6 @@ export function Dashboard() {
     async (options?: { silent?: boolean }) => {
       if (crmSyncInFlight.current) return null;
       crmSyncInFlight.current = true;
-      setCrmSyncing(true);
       try {
         const res = await fetch("/api/crm/sync", { method: "POST" });
         const data = await res.json();
@@ -283,7 +279,6 @@ export function Dashboard() {
         return null;
       } finally {
         crmSyncInFlight.current = false;
-        setCrmSyncing(false);
       }
     },
     [fetchLeads]
@@ -348,8 +343,6 @@ export function Dashboard() {
     fetchLeads(true);
   };
 
-  const checkReplies = () => runReplyCheck({ manual: true });
-
   const stageLeads = useMemo(
     () => leads.filter((l) => l.stage === activeStage),
     [leads, activeStage]
@@ -387,17 +380,6 @@ export function Dashboard() {
     } else {
       setSelected(new Set(selectable.map((l) => l.rowIndex)));
     }
-  };
-
-  const initSheet = async () => {
-    const res = await fetch("/api/sheets/init", { method: "POST" });
-    const data = await res.json();
-    if (!res.ok) {
-      setError(data.error || "Sheet init failed");
-      return;
-    }
-    showActionMessage(`Tab "${data.tab}" ready with headers`);
-    fetchLeads();
   };
 
   const cancelSend = async (rowIndex: number) => {
@@ -686,41 +668,30 @@ export function Dashboard() {
 
   return (
     <>
-      <header className="app-header">
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <GalvorBrand />
-          <span className="brand-badge">Outbound Pipeline</span>
-        </div>
-        <div className="header-actions">
-          <AppNav active="pipeline" />
-          <button className="btn btn--ghost" onClick={() => fetchLeads(true)}>
-            Refresh
-          </button>
-          <button className="btn btn--ghost" onClick={() => syncCrm()} disabled={crmSyncing}>
-            {crmSyncing ? "Syncing CRM…" : "Sync CRM"}
-          </button>
-          <button className="btn btn--ghost" onClick={checkReplies}>
-            Check Replies
-          </button>
-          <button className="btn btn--ghost" onClick={initSheet}>
-            Init Sheet Tab
-          </button>
-          <a
-            href={`https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/edit?gid=${SHEET_TAB_GID}#gid=${SHEET_TAB_GID}`}
-            target="_blank"
-            rel="noreferrer"
-            className="btn btn--ghost"
-          >
-            Open Sheet
-          </a>
-          <span className="header-email">{session?.user?.email}</span>
-          <button className="btn btn--ghost" onClick={() => signOut({ callbackUrl: "/login" })}>
-            Sign out
-          </button>
-        </div>
-      </header>
+      <AppHeader
+        active="pipeline"
+        actions={
+          <>
+            <button type="button" className="btn btn--ghost btn--sm" onClick={() => fetchLeads(true)}>
+              Refresh
+            </button>
+            <a
+              href={`https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/edit?gid=${SHEET_TAB_GID}#gid=${SHEET_TAB_GID}`}
+              target="_blank"
+              rel="noreferrer"
+              className="btn btn--ghost btn--sm"
+            >
+              Open sheet ↗
+            </a>
+          </>
+        }
+      />
 
       <main className="app-main">
+        <PageHead
+          title="Outbound Pipeline"
+          subtitle="Send emails, track stages, and manage replies. CRM sync and reply checks run automatically."
+        />
         <div className="stage-tabs">
           {STAGE_TABS.map((tab) => (
             <button

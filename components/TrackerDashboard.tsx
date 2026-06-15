@@ -1,7 +1,7 @@
 "use client";
 
-import { AppNav } from "@/components/AppNav";
-import { GalvorBrand } from "@/components/GalvorBrand";
+import { AppHeader } from "@/components/AppHeader";
+import { PageHead } from "@/components/PageHead";
 import {
   BRAND_TRACKER_TAB_GID,
   OUTREACH_TRACKER_SPREADSHEET_ID,
@@ -9,7 +9,6 @@ import {
   type BrandTrackerStatusCategory,
   type BrandTrackerView,
 } from "@/lib/types";
-import { signOut, useSession } from "next-auth/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 type StatusFilter = "all" | BrandTrackerStatusCategory;
@@ -28,7 +27,6 @@ function formatCommentLine(c: BrandTrackerComment): string {
 }
 
 export function TrackerDashboard() {
-  const { data: session } = useSession();
   const [brands, setBrands] = useState<BrandTrackerView[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -141,35 +139,43 @@ export function TrackerDashboard() {
 
   return (
     <>
-      <header className="app-header">
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <GalvorBrand href="/dashboard" />
-          <span className="brand-badge">Tracker</span>
-        </div>
-        <div className="header-actions">
-          <AppNav active="tracker" />
-          <button className="btn btn--ghost" onClick={() => loadBrands()} disabled={loading}>
-            Refresh
-          </button>
-          <button className="btn btn--primary" onClick={syncAll} disabled={syncing}>
-            {syncing ? "Syncing…" : "Sync to sheet"}
-          </button>
-          <a
-            href={`https://docs.google.com/spreadsheets/d/${OUTREACH_TRACKER_SPREADSHEET_ID}/edit?gid=${BRAND_TRACKER_TAB_GID}#gid=${BRAND_TRACKER_TAB_GID}`}
-            target="_blank"
-            rel="noreferrer"
-            className="btn btn--ghost"
-          >
-            Open Sheet
-          </a>
-          <span className="header-email">{session?.user?.email}</span>
-          <button className="btn btn--ghost" onClick={() => signOut({ callbackUrl: "/login" })}>
-            Sign out
-          </button>
-        </div>
-      </header>
+      <AppHeader
+        active="tracker"
+        actions={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={() => loadBrands()}
+              disabled={loading}
+            >
+              Refresh
+            </button>
+            <button
+              type="button"
+              className="btn btn--primary btn--sm"
+              onClick={syncAll}
+              disabled={syncing}
+            >
+              {syncing ? "Syncing…" : "Sync to sheet"}
+            </button>
+            <a
+              href={`https://docs.google.com/spreadsheets/d/${OUTREACH_TRACKER_SPREADSHEET_ID}/edit?gid=${BRAND_TRACKER_TAB_GID}#gid=${BRAND_TRACKER_TAB_GID}`}
+              target="_blank"
+              rel="noreferrer"
+              className="btn btn--ghost btn--sm"
+            >
+              Open sheet ↗
+            </a>
+          </>
+        }
+      />
 
       <main className="app-main tracker-main">
+        <PageHead
+          title="Tracker"
+          subtitle="Brand-level view of status and comments. Use Sync to sheet to push updates to Google Sheets."
+        />
         {actionMessage && <div className="alert alert--info">{actionMessage}</div>}
         {error && <div className="alert alert--error">{error}</div>}
 

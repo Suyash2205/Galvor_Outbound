@@ -1,7 +1,7 @@
 "use client";
 
-import { AppNav } from "@/components/AppNav";
-import { GalvorBrand } from "@/components/GalvorBrand";
+import { AppHeader } from "@/components/AppHeader";
+import { PageHead } from "@/components/PageHead";
 import {
   BRAND_TRACKER_TAB_GID,
   OUTREACH_CATEGORIES,
@@ -10,7 +10,6 @@ import {
   type OutreachBrand,
   type OutreachCategory,
 } from "@/lib/types";
-import { signOut, useSession } from "next-auth/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 function todayInputValue(): string {
@@ -18,7 +17,6 @@ function todayInputValue(): string {
 }
 
 export function OutreachDashboard() {
-  const { data: session } = useSession();
   const [brands, setBrands] = useState<OutreachBrand[]>([]);
   const [activities, setActivities] = useState<OutreachActivity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -191,32 +189,35 @@ export function OutreachDashboard() {
 
   return (
     <>
-      <header className="app-header">
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <GalvorBrand href="/dashboard" />
-          <span className="brand-badge">Outreach Tracker</span>
-        </div>
-        <div className="header-actions">
-          <AppNav active="outreach" />
-          <button className="btn btn--ghost" onClick={() => loadData()} disabled={loading}>
-            Refresh
-          </button>
-          <a
-            href={`https://docs.google.com/spreadsheets/d/${OUTREACH_TRACKER_SPREADSHEET_ID}/edit?gid=${BRAND_TRACKER_TAB_GID}#gid=${BRAND_TRACKER_TAB_GID}`}
-            target="_blank"
-            rel="noreferrer"
-            className="btn btn--ghost"
-          >
-            Open Tracker
-          </a>
-          <span className="header-email">{session?.user?.email}</span>
-          <button className="btn btn--ghost" onClick={() => signOut({ callbackUrl: "/login" })}>
-            Sign out
-          </button>
-        </div>
-      </header>
+      <AppHeader
+        active="outreach"
+        actions={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={() => loadData()}
+              disabled={loading}
+            >
+              Refresh
+            </button>
+            <a
+              href={`https://docs.google.com/spreadsheets/d/${OUTREACH_TRACKER_SPREADSHEET_ID}/edit?gid=${BRAND_TRACKER_TAB_GID}#gid=${BRAND_TRACKER_TAB_GID}`}
+              target="_blank"
+              rel="noreferrer"
+              className="btn btn--ghost btn--sm"
+            >
+              Open sheet ↗
+            </a>
+          </>
+        }
+      />
 
       <main className="app-main outreach-main">
+        <PageHead
+          title="Outreach"
+          subtitle="Log calls and meetings. Status and comments sync to the tracker automatically when you save."
+        />
         {actionMessage && <div className="alert alert--info">{actionMessage}</div>}
         {error && <div className="alert alert--error">{error}</div>}
 
@@ -316,37 +317,51 @@ export function OutreachDashboard() {
           </section>
 
           <section className="outreach-card">
-            <h2 className="outreach-card__title">Final status &amp; comments</h2>
+            <h2 className="outreach-card__title">Sheet sync</h2>
             <p className="outreach-card__hint">
-              Updates column K (Final Status) and L (Comments) on the Tracker tab. Active lead if
-              any log exists; otherwise email stage from pipeline or response-with-no-work.
+              Saving a log above updates that brand automatically. Use these when you need a full
+              refresh of the Google Sheet.
             </p>
-            <div className="outreach-form__actions">
-              <button
-                className="btn btn--primary"
-                onClick={syncBrandTracker}
-                disabled={brandSyncing}
-              >
-                {brandSyncing ? "Syncing…" : "Sync K & L to sheet"}
-              </button>
-            </div>
-          </section>
 
-          <section className="outreach-card">
-            <h2 className="outreach-card__title">Email status sync</h2>
-            <p className="outreach-card__hint">
-              Auto-fill columns M/N/O (Email Status, Last Email Date, Outcome) from Outbound
-              Pipeline. Matches by email first, then fuzzy company name.
-            </p>
-            <div className="outreach-form__actions">
-              <button className="btn btn--primary" onClick={() => syncPipeline(false)} disabled={syncing}>
-                {syncing ? "Syncing…" : "Sync empty rows"}
-              </button>
-              <button className="btn btn--secondary" onClick={() => syncPipeline(true)} disabled={syncing}>
-                Overwrite all
-              </button>
+            <div className="outreach-sync-group">
+              <div className="outreach-sync-group__block">
+                <h3 className="outreach-sync-group__label">Status &amp; comments (K / L)</h3>
+                <p className="outreach-sync-group__desc">
+                  Final status and comment threads for all brands.
+                </p>
+                <button
+                  className="btn btn--secondary"
+                  onClick={syncBrandTracker}
+                  disabled={brandSyncing}
+                >
+                  {brandSyncing ? "Syncing…" : "Sync all brands"}
+                </button>
+              </div>
+
+              <div className="outreach-sync-group__block">
+                <h3 className="outreach-sync-group__label">Email status (M / N / O)</h3>
+                <p className="outreach-sync-group__desc">
+                  Pull email stage from the Outbound Pipeline sheet.
+                </p>
+                <div className="outreach-form__actions">
+                  <button
+                    className="btn btn--secondary"
+                    onClick={() => syncPipeline(false)}
+                    disabled={syncing}
+                  >
+                    {syncing ? "Syncing…" : "Fill empty rows"}
+                  </button>
+                  <button
+                    className="btn btn--ghost btn--sm"
+                    onClick={() => syncPipeline(true)}
+                    disabled={syncing}
+                  >
+                    Overwrite all
+                  </button>
+                </div>
+                {syncResult && <p className="outreach-sync-result">{syncResult}</p>}
+              </div>
             </div>
-            {syncResult && <p className="outreach-sync-result">{syncResult}</p>}
           </section>
 
           <section className="outreach-card outreach-card--wide">
