@@ -50,7 +50,10 @@ Respond ONLY with valid JSON — no markdown, no explanation:
 {"clusters":[{"name":"...","description":"...","adCount":0,"avgAgeDays":0,"oldestDays":0}],"insight":"...","followUpBody":"..."}`;
 }
 
-export async function callClaude(prompt: string): Promise<string> {
+export async function callClaude(
+  prompt: string,
+  options?: { max_tokens?: number }
+): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not configured.");
 
@@ -63,7 +66,7 @@ export async function callClaude(prompt: string): Promise<string> {
     },
     body: JSON.stringify({
       model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6",
-      max_tokens: 1500,
+      max_tokens: options?.max_tokens ?? 1500,
       messages: [{ role: "user", content: prompt }],
     }),
   });
@@ -77,14 +80,38 @@ export async function callClaude(prompt: string): Promise<string> {
   }
 
   const json = await res.json();
-  return json.content?.[0]?.text || "";
+  const text = json.content?.[0]?.text;
+  if (typeof text !== "string" || !text.trim()) {
+    throw new Error("Claude returned an empty response. Please try again.");
+  }
+  return text;
+}
+
+function extractJsonObject(raw: string): string | null {
+  const trimmed = raw.trim();
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced?.[1]) return fenced[1].trim();
+
+  const start = trimmed.indexOf("{");
+  const end = trimmed.lastIndexOf("}");
+  if (start >= 0 && end > start) return trimmed.slice(start, end + 1);
+  return null;
+}
+
+function parseClaudeJson<T>(raw: string, label: string): T {
+  const jsonText = extractJsonObject(raw);
+  if (!jsonText) {
+    throw new Error(`Unexpected response from Claude while ${label}. Please try again.`);
+  }
+  try {
+    return JSON.parse(jsonText) as T;
+  } catch {
+    throw new Error(`Could not parse Claude response while ${label}. Please try again.`);
+  }
 }
 
 export function parseClaudeResponse(raw: string): ClaudeAnalysis {
-  const match = raw.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error("Unexpected response format from Claude. Please try again.");
-
-  const result = JSON.parse(match[0]) as ClaudeAnalysis;
+  const result = parseClaudeJson<ClaudeAnalysis>(raw, "parsing analysis");
   if (!result.clusters?.length || !result.insight) {
     throw new Error("Claude response was incomplete. Please try again.");
   }
@@ -205,6 +232,36 @@ export async function generateWeeklyDraft(
   }[],
   weekLabel: string
 ): Promise<{ subject: string; body: string }> {
+  const subject = `Sales Update — Week of ${weekLabel}`;
+
+  if (!activities.length) {
+    return {
+      subject,
+      body: `Sales Update
+
+CONTRACTING
+- No contracting activity logged this week.
+
+DEMOS / IN ANALYSIS
+- No demo activity logged this week.
+
+CALLS / MEETINGS
+- No calls or meetings logged this week.
+
+NEW ACCOUNTS OPENED THIS WEEK
+- No new accounts logged this week.
+
+FOLLOW-UPS PENDING
+- No follow-ups logged this week.
+
+OUTREACH — EMAIL
+- No major bulk email sends logged this week.
+
+MARKETING UPDATE — LINKEDIN
+- [Add LinkedIn stats manually — API coming soon]`,
+    };
+  }
+
   const grouped = {
     Contracting: [] as string[],
     Demo: [] as string[],
@@ -233,33 +290,41 @@ ${activitySummary}
 
 Write a complete weekly update email with these sections (use exact section titles):
 
-1. **Contracting** — bullet list
-2. **Demos / In Analysis** — bullet list (from Demo category)
-3. **Calls / Meetings** — bullet list (from Call category)
-4. **New Accounts Opened This Week** — bullet list (from New account category)
-5. **Follow-ups Pending** — bullet list (from Follow-up category)
-6. **Outreach — Email** — brief pipeline summary placeholder noting bulk sends if any activities mention email outreach; otherwise write "No major bulk email sends logged this week."
-7. **Marketing Update — LinkedIn** — placeholder: "[Add LinkedIn stats manually — API coming soon]"
+1. CONTRACTING — bullet list
+2. DEMOS / IN ANALYSIS — bullet list (from Demo category)
+3. CALLS / MEETINGS — bullet list (from Call category)
+4. NEW ACCOUNTS OPENED THIS WEEK — bullet list (from New account category)
+5. FOLLOW-UPS PENDING — bullet list (from Follow-up category)
+6. OUTREACH — EMAIL — brief pipeline summary; if no email outreach logged, write "No major bulk email sends logged this week."
+7. MARKETING UPDATE — LINKEDIN — write exactly: "[Add LinkedIn stats manually — API coming soon]"
 
 Rules:
 - Use the activity notes provided; expand slightly for readability but do not invent meetings or outcomes
 - Format dates as D/M or DD/MM like the team uses (e.g. 11/6)
 - Professional, concise tone matching a B2B agency sales update
-- Plain text with section headers in ALL CAPS or Title Case as shown above
-- Start with "Sales Update" as the title line
-- Do not include subject line in the body
+- Plain text with section headers in ALL CAPS as shown above
+- Start the body with "Sales Update" as the title line
+- Do not include the subject line in the body
+- Escape any double quotes inside JSON string values
 
-Return JSON only:
+Respond with ONLY valid JSON (no markdown fences, no commentary):
 {"subject":"Sales Update — Week of ...","body":"..."}`;
 
-  const raw = await callClaude(prompt);
-  const match = raw.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error("Unexpected response from Claude.");
+  const raw = await callClaude(prompt, { max_tokens: 4096 });
 
-  const result = JSON.parse(match[0]) as { subject?: string; body?: string };
-  if (!result.body?.trim()) throw new Error("Weekly draft was empty.");
+  let result: { subject?: string; body?: string };
+  try {
+    result = parseClaudeJson<{ subject?: string; body?: string }>(raw, "generating weekly draft");
+  } catch {
+    // Fallback: Claude sometimes returns plain text instead of JSON
+    const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();
+    if (cleaned.length < 80) throw new Error("Weekly draft was empty. Please try again.");
+    return { subject, body: cleaned };
+  }
+
+  if (!result.body?.trim()) throw new Error("Weekly draft was empty. Please try again.");
   return {
-    subject: result.subject?.trim() || `Sales Update — ${weekLabel}`,
+    subject: result.subject?.trim() || subject,
     body: result.body.trim(),
   };
 }
