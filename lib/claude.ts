@@ -1,5 +1,12 @@
 import type { ClaudeAnalysis } from "./types";
 import type { ProcessedAd as Ad } from "./apify";
+import {
+  emptyWeeklyDraftContent,
+  renderWeeklyDraftHtml,
+  renderWeeklyDraftPlain,
+  type WeeklyDraftContent,
+  type WeeklyDraftItem,
+} from "./weekly-draft-html";
 
 export function buildPrompt(
   brandName: string,
@@ -231,35 +238,17 @@ export async function generateWeeklyDraft(
     activityDate: string;
   }[],
   weekLabel: string
-): Promise<{ subject: string; body: string }> {
+): Promise<{ subject: string; htmlBody: string; plainBody: string }> {
   const subject = `Sales Update — Week of ${weekLabel}`;
 
+  const buildDraft = (content: WeeklyDraftContent) => ({
+    subject: content.subject || subject,
+    htmlBody: renderWeeklyDraftHtml(content, weekLabel),
+    plainBody: renderWeeklyDraftPlain(content, weekLabel),
+  });
+
   if (!activities.length) {
-    return {
-      subject,
-      body: `Sales Update
-
-CONTRACTING
-- No contracting activity logged this week.
-
-DEMOS / IN ANALYSIS
-- No demo activity logged this week.
-
-CALLS / MEETINGS
-- No calls or meetings logged this week.
-
-NEW ACCOUNTS OPENED THIS WEEK
-- No new accounts logged this week.
-
-FOLLOW-UPS PENDING
-- No follow-ups logged this week.
-
-OUTREACH — EMAIL
-- No major bulk email sends logged this week.
-
-MARKETING UPDATE — LINKEDIN
-- [Add LinkedIn stats manually — API coming soon]`,
-    };
+    return buildDraft({ ...emptyWeeklyDraftContent(subject), subject });
   }
 
   const grouped = {
@@ -281,50 +270,69 @@ MARKETING UPDATE — LINKEDIN
     .map(([cat, items]) => `${cat} (${items.length}):\n${items.map((i) => `- ${i}`).join("\n") || "- (none)"}`)
     .join("\n\n");
 
-  const prompt = `You write Galvor's weekly Sales & Marketing Update email for internal stakeholders (Kuljit, Amit, Mohit style).
+  const prompt = `You write Galvor's weekly Sales & Marketing Update email for internal stakeholders (Sunil / Kuljit style).
 
 Week: ${weekLabel}
 
 Logged activities this week:
 ${activitySummary}
 
-Write a complete weekly update email with these sections (use exact section titles):
+Return structured content for an HTML email. Each item has:
+- "label": brand or contact (e.g. "Angel One", "Foxtale (Deepti)", "21 contacts / 7 accounts", or "" for plain bullets)
+- "text": the update sentence(s) WITHOUT repeating the label
 
-1. CONTRACTING — bullet list
-2. DEMOS / IN ANALYSIS — bullet list (from Demo category)
-3. CALLS / MEETINGS — bullet list (from Call category)
-4. NEW ACCOUNTS OPENED THIS WEEK — bullet list (from New account category)
-5. FOLLOW-UPS PENDING — bullet list (from Follow-up category)
-6. OUTREACH — EMAIL — brief pipeline summary; if no email outreach logged, write "No major bulk email sends logged this week."
-7. MARKETING UPDATE — LINKEDIN — write exactly: "[Add LinkedIn stats manually — API coming soon]"
+Group activities into these arrays (use empty arrays if none):
+- contracting
+- demos (from Demo category)
+- calls (from Call category)
+- newAccounts (from New account category)
+- followUps (from Follow-up category)
+- outreach: 1–3 bullets summarising email outreach this week; mention brands contacted. If none, use one item with label "" and text "No major bulk email sends logged this week."
 
 Rules:
-- Use the activity notes provided; expand slightly for readability but do not invent meetings or outcomes
-- Format dates as D/M or DD/MM like the team uses (e.g. 11/6)
-- Professional, concise tone matching a B2B agency sales update
-- Plain text with section headers in ALL CAPS as shown above
-- Start the body with "Sales Update" as the title line
-- Do not include the subject line in the body
-- Escape any double quotes inside JSON string values
+- Use only facts from the logged activities; do not invent meetings or outcomes
+- Dates as D/M or DD/MM (e.g. 11/6, 18/6)
+- Merge multiple logs for the same brand into one item where sensible
+- Professional B2B agency tone
+- Escape double quotes in JSON strings
 
-Respond with ONLY valid JSON (no markdown fences, no commentary):
-{"subject":"Sales Update — Week of ...","body":"..."}`;
+Respond with ONLY valid JSON:
+{"subject":"Sales Update — Week of ...","contracting":[{"label":"...","text":"..."}],"demos":[],"calls":[],"newAccounts":[],"followUps":[],"outreach":[]}`;
 
   const raw = await callClaude(prompt, { max_tokens: 4096 });
 
-  let result: { subject?: string; body?: string };
+  let parsed: WeeklyDraftContent;
   try {
-    result = parseClaudeJson<{ subject?: string; body?: string }>(raw, "generating weekly draft");
+    const result = parseClaudeJson<WeeklyDraftContent>(raw, "generating weekly draft");
+    parsed = normalizeWeeklyDraftContent(result, subject);
   } catch {
-    // Fallback: Claude sometimes returns plain text instead of JSON
-    const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();
-    if (cleaned.length < 80) throw new Error("Weekly draft was empty. Please try again.");
-    return { subject, body: cleaned };
+    throw new Error("Could not parse weekly draft. Please try again.");
   }
 
-  if (!result.body?.trim()) throw new Error("Weekly draft was empty. Please try again.");
+  return buildDraft(parsed);
+}
+
+function asItems(value: unknown): WeeklyDraftItem[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const row = item as { label?: string; text?: string };
+      const text = row.text?.trim();
+      if (!text) return null;
+      return { label: row.label?.trim() || "", text };
+    })
+    .filter((item): item is WeeklyDraftItem => item !== null);
+}
+
+function normalizeWeeklyDraftContent(raw: WeeklyDraftContent, fallbackSubject: string): WeeklyDraftContent {
   return {
-    subject: result.subject?.trim() || subject,
-    body: result.body.trim(),
+    subject: raw.subject?.trim() || fallbackSubject,
+    contracting: asItems(raw.contracting),
+    demos: asItems(raw.demos),
+    calls: asItems(raw.calls),
+    newAccounts: asItems(raw.newAccounts),
+    followUps: asItems(raw.followUps),
+    outreach: asItems(raw.outreach),
   };
 }

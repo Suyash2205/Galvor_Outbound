@@ -1114,14 +1114,31 @@ input[type="checkbox"] {
 }
 
 .outreach-draft-subject {
-  margin: 14px 0 8px;
+  margin: 16px 0 10px;
   font-size: 14px;
 }
 
-.outreach-draft {
-  min-height: 360px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
+.outreach-draft-preview {
+  margin-top: 12px;
+  padding: 20px 24px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  overflow-x: auto;
+  line-height: 1.55;
+}
+
+.outreach-draft-preview ul {
+  margin: 6px 0 14px;
+  padding-left: 22px;
+}
+
+.outreach-draft-preview li {
+  margin-bottom: 6px;
+}
+
+.outreach-draft-preview table {
+  margin: 12px 0 16px;
 }
 
 .outreach-activity-text {

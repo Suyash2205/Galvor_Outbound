@@ -36,7 +36,8 @@ export function OutreachDashboard() {
   const [syncResult, setSyncResult] = useState<string | null>(null);
   const [draftLoading, setDraftLoading] = useState(false);
   const [draftSubject, setDraftSubject] = useState("");
-  const [draftBody, setDraftBody] = useState("");
+  const [draftHtml, setDraftHtml] = useState("");
+  const [draftPlain, setDraftPlain] = useState("");
 
   const showActionMessage = (msg: string) => {
     setActionMessage(msg);
@@ -172,7 +173,8 @@ export function OutreachDashboard() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Draft generation failed");
       setDraftSubject(data.draft.subject);
-      setDraftBody(data.draft.body);
+      setDraftHtml(data.draft.htmlBody);
+      setDraftPlain(data.draft.plainBody);
       showActionMessage(`Draft ready (${data.activityCount} activities this week)`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Draft generation failed");
@@ -182,9 +184,24 @@ export function OutreachDashboard() {
   };
 
   const copyDraft = async () => {
-    const text = `Subject: ${draftSubject}\n\n${draftBody}`;
-    await navigator.clipboard.writeText(text);
-    showActionMessage("Copied to clipboard");
+    const html = draftHtml;
+    const plain = `Subject: ${draftSubject}\n\n${draftPlain}`;
+    try {
+      if (navigator.clipboard.write && typeof ClipboardItem !== "undefined") {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            "text/html": new Blob([html], { type: "text/html" }),
+            "text/plain": new Blob([plain], { type: "text/plain" }),
+          }),
+        ]);
+      } else {
+        await navigator.clipboard.writeText(plain);
+      }
+      showActionMessage("Copied — paste into Gmail to keep formatting");
+    } catch {
+      await navigator.clipboard.writeText(plain);
+      showActionMessage("Copied as plain text");
+    }
   };
 
   return (
@@ -367,16 +384,16 @@ export function OutreachDashboard() {
           <section className="outreach-card outreach-card--wide">
             <h2 className="outreach-card__title">Weekly email draft</h2>
             <p className="outreach-card__hint">
-              Generates a Sunil-style update from this week&apos;s logs. Copy, paste into Gmail, and
-              edit before sending.
+              Generates a formatted Sunil-style update from this week&apos;s logs. Copy and paste
+              into Gmail — bold headings, blue titles, and bullet layout are preserved.
             </p>
             <div className="outreach-form__actions">
               <button className="btn btn--primary" onClick={generateDraft} disabled={draftLoading}>
                 {draftLoading ? "Generating…" : "Generate this week's draft"}
               </button>
-              {draftBody && (
+              {draftHtml && (
                 <button className="btn btn--secondary" onClick={copyDraft}>
-                  Copy to clipboard
+                  Copy for Gmail
                 </button>
               )}
             </div>
@@ -385,8 +402,11 @@ export function OutreachDashboard() {
                 <strong>Subject:</strong> {draftSubject}
               </p>
             )}
-            {draftBody && (
-              <textarea className="modal__import-textarea outreach-draft" rows={18} readOnly value={draftBody} />
+            {draftHtml && (
+              <div
+                className="outreach-draft-preview"
+                dangerouslySetInnerHTML={{ __html: draftHtml }}
+              />
             )}
           </section>
         </div>
