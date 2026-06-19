@@ -4,17 +4,104 @@ import {
   colLetter,
   getCol,
   TRACKER_LEGACY_COLUMN_INDEX,
+  type TrackerColumnKey,
   type TrackerColumnMap,
 } from "./tracker-headers";
 import {
   OUTREACH_ACTIVITY_HEADERS,
   OUTREACH_ACTIVITY_TAB_NAME,
-  OUTREACH_CATEGORIES,
   BRAND_TRACKER_TAB_NAME,
   type OutreachActivity,
   type OutreachBrand,
   type OutreachCategory,
 } from "./types";
+import { isValidActivityCategory, fetchCustomIndustryCategories, appendCustomIndustryCategory, fetchActivityCategories } from "./outreach-categories";
+
+function uniqueSorted(values: string[]): string[] {
+  return [...new Set(values.map((v) => v.trim()).filter(Boolean))].sort((a, b) =>
+    a.localeCompare(b, undefined, { sensitivity: "base" })
+  );
+}
+
+function setRowCell(
+  row: string[],
+  colMap: TrackerColumnMap,
+  key: TrackerColumnKey,
+  value: string
+): void {
+  const idx = colMap[key];
+  if (idx === undefined) return;
+  while (row.length <= idx) row.push("");
+  row[idx] = value;
+}
+
+export async function fetchIndustryCategories(): Promise<string[]> {
+  const rows = await fetchBrandTrackerRows();
+  const fromTracker = rows.map((r) => r.industry).filter(Boolean);
+  const custom = await fetchCustomIndustryCategories();
+  return uniqueSorted([...fromTracker, ...custom]);
+}
+
+export async function addIndustryCategory(name: string): Promise<string[]> {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("Category name is required.");
+
+  const existing = await fetchIndustryCategories();
+  if (existing.some((c) => c.toLowerCase() === trimmed.toLowerCase())) {
+    return existing;
+  }
+
+  await appendCustomIndustryCategory(trimmed);
+  return fetchIndustryCategories();
+}
+
+export async function appendTrackerBrand(input: {
+  brand: string;
+  category: string;
+  firstName: string;
+  lastName: string;
+  source: string;
+  owner: string;
+}): Promise<{ rowIndex: number; brand: string }> {
+  const brand = input.brand.trim();
+  if (!brand) throw new Error("Company / Brand is required.");
+
+  const tab = await getTrackerTab();
+  const colMap = await fetchHeaderMap(tab);
+  if (colMap.brand === undefined) {
+    throw new Error("Company / Brand column not found on tracker sheet.");
+  }
+
+  const auth = getAuth();
+  const sheets = google.sheets({ version: "v4", auth });
+  const spreadsheetId = getSpreadsheetId();
+
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `${tab}!A${DATA_START}:AZ`,
+  });
+
+  const rowIndex = DATA_START + (res.data.values?.length || 0);
+  const maxIdx = Math.max(...Object.values(colMap), TRACKER_LEGACY_COLUMN_INDEX);
+  const row = new Array(maxIdx + 1).fill("");
+
+  setRowCell(row, colMap, "brand", brand);
+  setRowCell(row, colMap, "category", input.category.trim());
+  setRowCell(row, colMap, "firstName", input.firstName.trim());
+  setRowCell(row, colMap, "lastName", input.lastName.trim());
+  setRowCell(row, colMap, "source", input.source.trim());
+  setRowCell(row, colMap, "owner", input.owner.trim());
+
+  const endCol = colLetter(maxIdx);
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: `${tab}!A${rowIndex}:${endCol}${rowIndex}`,
+    valueInputOption: "RAW",
+    requestBody: { values: [row] },
+  });
+
+  return { rowIndex, brand };
+}
 
 const HEADER_ROW = 3;
 const DATA_START = 4;
@@ -239,10 +326,14 @@ export async function ensureActivityLogTab(): Promise<void> {
   }
 }
 
-function rowToActivity(row: string[], rowIndex: number): OutreachActivity | null {
+async function rowToActivity(
+  row: string[],
+  rowIndex: number,
+  allowedCategories: Set<string>
+): Promise<OutreachActivity | null> {
   if (!row[2]?.trim() && !row[4]?.trim()) return null;
-  const category = row[3]?.trim() as OutreachCategory;
-  if (!OUTREACH_CATEGORIES.includes(category)) return null;
+  const category = row[3]?.trim() || "";
+  if (!category || !allowedCategories.has(category.toLowerCase())) return null;
 
   return {
     rowIndex,
@@ -270,9 +361,16 @@ export async function fetchActivities(options?: {
     range: `${OUTREACH_ACTIVITY_TAB_NAME}!A2:G`,
   });
 
-  let activities = (res.data.values || [])
-    .map((row, i) => rowToActivity(row as string[], i + 2))
-    .filter((a): a is OutreachActivity => a !== null);
+  const allowed = await fetchActivityCategories();
+  const allowedCategories = new Set(allowed.map((c) => c.toLowerCase()));
+
+  let activities = (
+    await Promise.all(
+      (res.data.values || []).map((row, i) =>
+        rowToActivity(row as string[], i + 2, allowedCategories)
+      )
+    )
+  ).filter((a): a is OutreachActivity => a !== null);
 
   if (options?.since) {
     const sinceMs = new Date(options.since).getTime();
@@ -303,7 +401,7 @@ export async function appendActivity(input: {
   polishedComment?: string;
   loggedBy: string;
 }): Promise<OutreachActivity> {
-  if (!OUTREACH_CATEGORIES.includes(input.category)) {
+  if (!(await isValidActivityCategory(input.category))) {
     throw new Error(`Invalid category: ${input.category}`);
   }
 

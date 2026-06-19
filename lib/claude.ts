@@ -251,19 +251,20 @@ export async function generateWeeklyDraft(
     return buildDraft({ ...emptyWeeklyDraftContent(subject), subject });
   }
 
-  const grouped = {
-    Contracting: [] as string[],
-    Demo: [] as string[],
-    Call: [] as string[],
-    "New account": [] as string[],
-    "Follow-up": [] as string[],
+  const grouped: Record<string, string[]> = {
+    Contracting: [],
+    Demo: [],
+    Call: [],
+    "New account": [],
+    "Follow-up": [],
   };
 
   for (const a of activities) {
     const text = (a.polishedComment || a.comments).trim();
     if (!text) continue;
-    const key = a.category as keyof typeof grouped;
-    if (grouped[key]) grouped[key].push(`${a.brand} — ${text}`);
+    const key = a.category;
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(`${a.brand} — ${text}`);
   }
 
   const activitySummary = Object.entries(grouped)

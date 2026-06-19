@@ -1070,6 +1070,34 @@ input[type="checkbox"] {
   line-height: 1.45;
 }
 
+.outreach-field__action {
+  margin-top: 8px;
+  align-self: flex-start;
+}
+
+.outreach-field__error {
+  font-size: 12px;
+  color: var(--error);
+}
+
+.lead-filters__input--error {
+  border-color: var(--error);
+}
+
+.outreach-form--modal {
+  margin-top: 8px;
+}
+
+.outreach-inline-add {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.outreach-inline-add .lead-filters__input {
+  flex: 1;
+}
+
 .outreach-form {
   display: grid;
   grid-template-columns: 1fr 1fr;

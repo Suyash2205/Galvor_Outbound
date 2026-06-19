@@ -4,6 +4,10 @@ export const TRACKER_LEGACY_COLUMN_INDEX = 8;
 export type TrackerColumnKey =
   | "brand"
   | "category"
+  | "firstName"
+  | "lastName"
+  | "source"
+  | "owner"
   | "email"
   | "phone"
   | "legacyComments"
@@ -16,6 +20,10 @@ export type TrackerColumnKey =
 const HEADER_ALIASES: Record<TrackerColumnKey, string[]> = {
   brand: ["company / brand", "company", "brand"],
   category: ["category", "industry"],
+  firstName: ["first name"],
+  lastName: ["last name"],
+  source: ["source", "lead source"],
+  owner: ["owner"],
   email: ["email address", "email"],
   phone: ["phone number", "phone"],
   legacyComments: ["icp persona"],

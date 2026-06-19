@@ -1,7 +1,8 @@
 import { requireAuth } from "@/lib/auth";
 import { appendActivity, fetchActivities } from "@/lib/outreach-sheets";
 import { syncBrandTrackerToSheet } from "@/lib/tracker-brand-sync";
-import { OUTREACH_CATEGORIES, type OutreachCategory } from "@/lib/types";
+import { isValidActivityCategory } from "@/lib/outreach-categories";
+import type { OutreachCategory } from "@/lib/types";
 import { NextResponse } from "next/server";
 
 export async function GET(req: Request) {
@@ -40,8 +41,11 @@ export async function POST(req: Request) {
     if (!brand?.trim()) {
       return NextResponse.json({ error: "Brand is required." }, { status: 400 });
     }
-    if (!category || !OUTREACH_CATEGORIES.includes(category)) {
-      return NextResponse.json({ error: "Valid category is required." }, { status: 400 });
+    if (!category?.trim()) {
+      return NextResponse.json({ error: "Category is required." }, { status: 400 });
+    }
+    if (!(await isValidActivityCategory(category))) {
+      return NextResponse.json({ error: "Please select a valid category." }, { status: 400 });
     }
     if (!comments?.trim()) {
       return NextResponse.json({ error: "Comments are required." }, { status: 400 });

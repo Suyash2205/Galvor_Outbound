@@ -2,13 +2,12 @@
 
 import { AppHeader } from "@/components/AppHeader";
 import { PageHead } from "@/components/PageHead";
+import { AddActivityCategoryModal, AddTrackerBrandModal } from "@/components/OutreachModals";
 import {
   BRAND_TRACKER_TAB_GID,
-  OUTREACH_CATEGORIES,
   OUTREACH_TRACKER_SPREADSHEET_ID,
   type OutreachActivity,
   type OutreachBrand,
-  type OutreachCategory,
 } from "@/lib/types";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -18,6 +17,8 @@ function todayInputValue(): string {
 
 export function OutreachDashboard() {
   const [brands, setBrands] = useState<OutreachBrand[]>([]);
+  const [activityCategories, setActivityCategories] = useState<string[]>([]);
+  const [industryCategories, setIndustryCategories] = useState<string[]>([]);
   const [activities, setActivities] = useState<OutreachActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -26,11 +27,18 @@ export function OutreachDashboard() {
   const [activityDate, setActivityDate] = useState(todayInputValue());
   const [brand, setBrand] = useState("");
   const [brandSearch, setBrandSearch] = useState("");
-  const [category, setCategory] = useState<OutreachCategory>("Call");
+  const [category, setCategory] = useState("");
+  const [categoryError, setCategoryError] = useState<string | null>(null);
   const [comments, setComments] = useState("");
   const [polishedComment, setPolishedComment] = useState("");
   const [saving, setSaving] = useState(false);
   const [polishing, setPolishing] = useState(false);
+  const [showAddBrand, setShowAddBrand] = useState(false);
+  const [showAddCategory, setShowAddCategory] = useState(false);
+  const [addBrandLoading, setAddBrandLoading] = useState(false);
+  const [addCategoryLoading, setAddCategoryLoading] = useState(false);
+  const [addBrandError, setAddBrandError] = useState<string | null>(null);
+  const [addCategoryError, setAddCategoryError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [brandSyncing, setBrandSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<string | null>(null);
@@ -48,16 +56,21 @@ export function OutreachDashboard() {
     setLoading(true);
     setError(null);
     try {
-      const [brandsRes, activitiesRes] = await Promise.all([
+      const [brandsRes, activitiesRes, categoriesRes] = await Promise.all([
         fetch("/api/outreach/brands"),
         fetch("/api/outreach/activities?limit=50"),
+        fetch("/api/outreach/categories"),
       ]);
       const brandsData = await brandsRes.json();
       const activitiesData = await activitiesRes.json();
+      const categoriesData = await categoriesRes.json();
       if (!brandsRes.ok) throw new Error(brandsData.error || "Failed to load brands");
       if (!activitiesRes.ok) throw new Error(activitiesData.error || "Failed to load activities");
+      if (!categoriesRes.ok) throw new Error(categoriesData.error || "Failed to load categories");
       setBrands(brandsData.brands || []);
       setActivities(activitiesData.activities || []);
+      setActivityCategories(categoriesData.activity || []);
+      setIndustryCategories(categoriesData.industry || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load outreach data");
     } finally {
@@ -76,7 +89,7 @@ export function OutreachDashboard() {
   }, [brands, brandSearch]);
 
   const polishComment = async () => {
-    if (!brand.trim() || !comments.trim()) return;
+    if (!brand.trim() || !comments.trim() || !category) return;
     setPolishing(true);
     setError(null);
     try {
@@ -98,6 +111,11 @@ export function OutreachDashboard() {
 
   const saveActivity = async () => {
     if (!brand.trim() || !comments.trim()) return;
+    if (!category) {
+      setCategoryError("Please select a category.");
+      return;
+    }
+    setCategoryError(null);
     setSaving(true);
     setError(null);
     try {
@@ -117,6 +135,7 @@ export function OutreachDashboard() {
       setActivities((prev) => [data.activity, ...prev]);
       setComments("");
       setPolishedComment("");
+      setCategory("");
       showActionMessage("Activity logged");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
@@ -181,6 +200,75 @@ export function OutreachDashboard() {
     } finally {
       setDraftLoading(false);
     }
+  };
+
+  const submitNewBrand = async (input: {
+    brand: string;
+    category: string;
+    firstName: string;
+    lastName: string;
+    source: string;
+    owner: string;
+  }) => {
+    setAddBrandLoading(true);
+    setAddBrandError(null);
+    try {
+      const res = await fetch("/api/outreach/brands", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to add brand");
+      setBrands(data.brands || []);
+      setBrand(input.brand);
+      setBrandSearch(input.brand);
+      setShowAddBrand(false);
+      showActionMessage(`Added ${input.brand} to tracker`);
+      const categoriesRes = await fetch("/api/outreach/categories");
+      const categoriesData = await categoriesRes.json();
+      if (categoriesRes.ok) {
+        setIndustryCategories(categoriesData.industry || []);
+      }
+    } catch (err) {
+      setAddBrandError(err instanceof Error ? err.message : "Failed to add brand");
+    } finally {
+      setAddBrandLoading(false);
+    }
+  };
+
+  const submitNewActivityCategory = async (name: string) => {
+    setAddCategoryLoading(true);
+    setAddCategoryError(null);
+    try {
+      const res = await fetch("/api/outreach/categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "activity", name }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to add category");
+      setActivityCategories(data.categories || []);
+      setCategory(name);
+      setCategoryError(null);
+      setShowAddCategory(false);
+      showActionMessage(`Added category "${name}"`);
+    } catch (err) {
+      setAddCategoryError(err instanceof Error ? err.message : "Failed to add category");
+    } finally {
+      setAddCategoryLoading(false);
+    }
+  };
+
+  const submitNewIndustryCategory = async (name: string) => {
+    const res = await fetch("/api/outreach/categories", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "industry", name }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to add industry category");
+    setIndustryCategories(data.categories || []);
   };
 
   const copyDraft = async () => {
@@ -274,21 +362,45 @@ export function OutreachDashboard() {
                     <option key={b.name} value={b.name} />
                   ))}
                 </datalist>
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm outreach-field__action"
+                  onClick={() => {
+                    setAddBrandError(null);
+                    setShowAddBrand(true);
+                  }}
+                >
+                  + New brand
+                </button>
               </label>
 
               <label className="outreach-field">
                 <span>Category</span>
                 <select
-                  className="lead-filters__input"
+                  className={`lead-filters__input${categoryError ? " lead-filters__input--error" : ""}`}
                   value={category}
-                  onChange={(e) => setCategory(e.target.value as OutreachCategory)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === "__new__") {
+                      setAddCategoryError(null);
+                      setShowAddCategory(true);
+                      return;
+                    }
+                    setCategory(val);
+                    setCategoryError(null);
+                  }}
                 >
-                  {OUTREACH_CATEGORIES.map((c) => (
+                  <option value="">Select category…</option>
+                  {activityCategories.map((c) => (
                     <option key={c} value={c}>
                       {c}
                     </option>
                   ))}
+                  <option value="__new__">+ Add new category…</option>
                 </select>
+                {categoryError && (
+                  <span className="outreach-field__error">{categoryError}</span>
+                )}
               </label>
 
               <label className="outreach-field outreach-field--full">
@@ -318,7 +430,7 @@ export function OutreachDashboard() {
                 <button
                   className="btn btn--secondary"
                   onClick={polishComment}
-                  disabled={polishing || !comments.trim() || !brand.trim()}
+                  disabled={polishing || !comments.trim() || !brand.trim() || !category}
                 >
                   {polishing ? "Polishing…" : "AI polish"}
                 </button>
@@ -438,6 +550,24 @@ export function OutreachDashboard() {
           </div>
         </section>
       </main>
+
+      <AddTrackerBrandModal
+        open={showAddBrand}
+        industryCategories={industryCategories}
+        loading={addBrandLoading}
+        error={addBrandError}
+        onClose={() => !addBrandLoading && setShowAddBrand(false)}
+        onSubmit={submitNewBrand}
+        onAddIndustryCategory={submitNewIndustryCategory}
+      />
+
+      <AddActivityCategoryModal
+        open={showAddCategory}
+        loading={addCategoryLoading}
+        error={addCategoryError}
+        onClose={() => !addCategoryLoading && setShowAddCategory(false)}
+        onSubmit={submitNewActivityCategory}
+      />
     </>
   );
 }

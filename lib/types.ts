@@ -113,6 +113,7 @@ export const BRAND_TRACKER_TAB_GID = "1535921837";
 export const OUTREACH_TRACKER_TAB_NAME = "Tracker";
 
 export const OUTREACH_ACTIVITY_TAB_NAME = "Activity Log";
+export const OUTREACH_LOOKUPS_TAB_NAME = "Lookups";
 
 export const OUTREACH_ACTIVITY_HEADERS = [
   "logged_at",
@@ -124,7 +125,7 @@ export const OUTREACH_ACTIVITY_HEADERS = [
   "logged_by",
 ] as const;
 
-export const OUTREACH_CATEGORIES = [
+export const DEFAULT_OUTREACH_CATEGORIES = [
   "Contracting",
   "Demo",
   "Call",
@@ -132,7 +133,11 @@ export const OUTREACH_CATEGORIES = [
   "Follow-up",
 ] as const;
 
-export type OutreachCategory = (typeof OUTREACH_CATEGORIES)[number];
+/** @deprecated use DEFAULT_OUTREACH_CATEGORIES */
+export const OUTREACH_CATEGORIES = DEFAULT_OUTREACH_CATEGORIES;
+
+export type DefaultOutreachCategory = (typeof DEFAULT_OUTREACH_CATEGORIES)[number];
+export type OutreachCategory = string;
 
 export interface OutreachActivity {
   rowIndex: number;
